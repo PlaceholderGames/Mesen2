@@ -28,6 +28,9 @@ private:
 	NesConfig _nes;
 	PcEngineConfig _pce;
 	SmsConfig _sms;
+	CvConfig _cv;
+	GbaConfig _gba;
+	WsConfig _ws;
 
 	atomic<uint32_t> _flags;
 	atomic<uint64_t> _debuggerFlags;
@@ -78,11 +81,20 @@ public:
 	void SetGameboyConfig(GameboyConfig& config);
 	GameboyConfig& GetGameboyConfig();
 
+	void SetGbaConfig(GbaConfig& config);
+	GbaConfig& GetGbaConfig();
+
 	void SetPcEngineConfig(PcEngineConfig& config);
 	PcEngineConfig& GetPcEngineConfig();
 
 	void SetSmsConfig(SmsConfig& config);
 	SmsConfig& GetSmsConfig();
+
+	void SetCvConfig(CvConfig& config);
+	CvConfig& GetCvConfig();
+
+	void SetWsConfig(WsConfig& config);
+	WsConfig& GetWsConfig();
 
 	void SetGameConfig(GameConfig& config);
 	GameConfig& GetGameConfig();

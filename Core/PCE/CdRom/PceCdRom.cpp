@@ -22,9 +22,16 @@ PceCdRom::PceCdRom(Emulator* emu, PceConsole* console, DiscInfo& disc) : _disc(d
 	_emu->GetSoundMixer()->RegisterAudioProvider(&_audioPlayer);
 	_emu->GetSoundMixer()->RegisterAudioProvider(&_adpcm);
 
-	//Initialize save ram
-	_saveRamSize = 0x2000;
-	_saveRam = new uint8_t[_saveRamSize];
+	//Initialize save ram (2 KB)
+	_saveRamSize = 0x800;
+
+	//Allocate 8kb to fill the entire 8kb bank and behave as if the top 6kb were open bus
+	_saveRam = new uint8_t[0x2000];
+
+	//Init the last 6kb to 0xFF to mimic open bus behavior
+	memset(_saveRam, 0xFF, 0x2000);
+
+	_orgSaveRam = new uint8_t[_saveRamSize];
 	_emu->RegisterMemory(MemoryType::PceSaveRam, _saveRam, _saveRamSize);
 
 	//Init the ram to be identical to the state the CD-ROM BIOS leaves it in when clearing all data
@@ -40,6 +47,7 @@ PceCdRom::PceCdRom(Emulator* emu, PceConsole* console, DiscInfo& disc) : _disc(d
 	_saveRam[7] = 0x80;
 
 	_emu->GetBatteryManager()->LoadBattery(".sav", _saveRam, _saveRamSize);
+	memcpy(_orgSaveRam, _saveRam, _saveRamSize);
 
 	//Initialize cdrom work ram
 	_cdromRamSize = 0x10000;
@@ -54,12 +62,13 @@ PceCdRom::~PceCdRom()
 	_emu->GetSoundMixer()->UnregisterAudioProvider(&_adpcm);
 
 	delete[] _saveRam;
+	delete[] _orgSaveRam;
 	delete[] _cdromRam;
 }
 
 void PceCdRom::SaveBattery()
 {
-	if(_saveRamSize > 0) {
+	if(memcmp(_orgSaveRam, _saveRam, _saveRamSize) != 0) {
 		_emu->GetBatteryManager()->SaveBattery(".sav", _saveRam, _saveRamSize);
 	}
 }
@@ -83,6 +92,21 @@ void PceCdRom::InitMemoryBanks(uint8_t* readBanks[0x100], uint8_t* writeBanks[0x
 		writeBanks[0xF7] = _saveRam;
 		bankMemType[0xF7] = MemoryType::PceSaveRam;
 	}
+}
+
+uint32_t PceCdRom::GetCurrentSector()
+{
+	if(_audioPlayer.GetStatus() == CdAudioStatus::Inactive) {
+		return _scsi.GetState().Sector;
+	} else {
+		return _audioPlayer.GetCurrentSector();
+	}
+}
+
+void PceCdRom::ProcessAudioPlaybackStart()
+{
+	SetIrqSource(PceCdRomIrqSource::DataTransferDone);
+	_scsi.SetStatusMessage(ScsiStatus::Good, 0);
 }
 
 void PceCdRom::SetIrqSource(PceCdRomIrqSource src)
@@ -131,7 +155,7 @@ void PceCdRom::Write(uint16_t addr, uint8_t value)
 			_scsi.SetSignalValue(Ack, (value & 0x80) != 0);
 			_scsi.UpdateState();
 
-			_state.EnabledIrqs = value & 0x7C;
+			_state.EnabledIrqs = value & 0x7F;
 			UpdateIrqState();
 			break;
 
@@ -139,6 +163,8 @@ void PceCdRom::Write(uint16_t addr, uint8_t value)
 
 		case 0x04: {
 			//Reset
+			_state.ResetRegValue = value & 0x0F;
+
 			bool reset = (value & 0x02) != 0;
 			_scsi.SetSignalValue(Rst, reset);
 			_scsi.UpdateState();
@@ -151,17 +177,27 @@ void PceCdRom::Write(uint16_t addr, uint8_t value)
 		}
 
 		case 0x05:
-		case 0x06:
-			//Readonly
+			if(_console->GetMasterClock() >= _latchChannelStamp) {
+				//Prevent multiple calls in a row - the delay is required to pass test rom
+				//The value of the L/R flag changes immediately, and writing to the register
+				//again within a short timeframe appears to be ignored.
+				_state.ReadRightChannel = !_state.ReadRightChannel;
+				_state.AudioSampleLatch = _state.ReadRightChannel ? _audioPlayer.GetRightSample() : _audioPlayer.GetLeftSample();
+				_latchChannelStamp = _console->GetMasterClock() + 700; //less than a 700 clock delay causes the test to fail
+			}
 			break;
 
-		case 0x07:
-			//BRAM unlock
-			if((value & 0x80) != 0) {
-				_state.BramLocked = false;
+		case 0x06: break; //readonly
+
+		case 0x07: {
+			//BRAM control
+			bool bramLocked = (value & 0x80) == 0;
+			if(_state.BramLocked != bramLocked) {
+				_state.BramLocked = bramLocked;
 				_console->GetMemoryManager()->UpdateCdRomBanks();
 			}
 			break;
+		}
 
 		case 0x08: case 0x09: case 0x0A: case 0x0B:
 		case 0x0C: case 0x0D: case 0x0E:
@@ -170,6 +206,12 @@ void PceCdRom::Write(uint16_t addr, uint8_t value)
 
 		case 0x0F:
 			_audioFader.Write(value);
+			break;
+
+		default:
+			if(!(addr & 0x200)) {
+				LogDebug("Write unknown CDROM register: " + HexUtilities::ToHex(addr));
+			}
 			break;
 	}
 }
@@ -183,17 +225,17 @@ uint8_t PceCdRom::Read(uint16_t addr)
 		case 0x03:
 			_state.BramLocked = true;
 			_console->GetMemoryManager()->UpdateCdRomBanks();
-			_state.ReadRightChannel = !_state.ReadRightChannel;
-
+			
 			return (
 				_state.ActiveIrqs |
+				0x10 | //drive active flag
 				(_state.ReadRightChannel ? 0 : 0x02)
 			);
 
-		case 0x04: return _scsi.CheckSignal(Rst) ? 0x02 : 0;
+		case 0x04: return _state.ResetRegValue;
 
-		case 0x05: return (uint8_t)(_state.ReadRightChannel ? _audioPlayer.GetRightSample() : _audioPlayer.GetLeftSample());
-		case 0x06: return (uint8_t)((_state.ReadRightChannel ? _audioPlayer.GetRightSample() : _audioPlayer.GetLeftSample()) >> 8);
+		case 0x05: return (uint8_t)_state.AudioSampleLatch;
+		case 0x06: return (uint8_t)(_state.AudioSampleLatch >> 8);
 			
 		case 0x07: return _state.BramLocked ? 0 : 0x80;
 
@@ -210,6 +252,8 @@ uint8_t PceCdRom::Read(uint16_t addr)
 		case 0x0C: case 0x0D: case 0x0E:
 			return _adpcm.Read(addr);
 
+		case 0x0F: return _audioFader.Read();
+
 		case 0xC0: case 0xC1: case 0xC2: case 0xC3: 
 			if(_emu->GetSettings()->GetPcEngineConfig().CdRomType == PceCdRomType::CdRom) {
 				return 0xFF;
@@ -219,7 +263,9 @@ uint8_t PceCdRom::Read(uint16_t addr)
 			}
 
 		default:
-			LogDebug("Read unknown CDROM register: " + HexUtilities::ToHex(addr));
+			if(!(addr & 0x200)) {
+				LogDebug("Read unknown CDROM register: " + HexUtilities::ToHex(addr));
+			}
 			break;
 	}
 
@@ -232,9 +278,13 @@ void PceCdRom::Serialize(Serializer& s)
 	SV(_state.BramLocked);
 	SV(_state.EnabledIrqs);
 	SV(_state.ReadRightChannel);
+	SV(_state.AudioSampleLatch);
+	SV(_state.ResetRegValue);
 
 	SVArray(_saveRam, _saveRamSize);
 	SVArray(_cdromRam, _cdromRamSize);
+
+	SV(_latchChannelStamp);
 
 	SV(_scsi);
 	SV(_adpcm);

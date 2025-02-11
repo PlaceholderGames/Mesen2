@@ -29,7 +29,8 @@ protected:
 	uint16_t RegisterStartAddress() override { return 0x6000; }
 	uint16_t RegisterEndAddress() override { return 0xFFFF; }
 	bool AllowRegisterRead() override { return true; }
-	
+	bool EnableCpuClockHook() override { return true; }
+
 	void InitMapper() override
 	{
 		memset(_chrRegs, 0, sizeof(_chrRegs));
@@ -65,7 +66,7 @@ protected:
 			//"INES Mapper 016 submapper 5: LZ93D50 ASIC and no or 256-byte serial EEPROM, banked CHR-ROM"
 			
 			//Add a 256 byte serial EEPROM (24C02)
-			if(!IsNes20() || (_romInfo.SubMapperID == 5 && _romInfo.Header.GetSaveRamSize() == 256)) {
+			if(_romInfo.SubMapperID == 0 || (_romInfo.SubMapperID == 5 && _romInfo.Header.GetSaveRamSize() == 256)) {
 				//Connect a 256-byte EEPROM for iNES roms, and when submapper 5 + 256 bytes of save ram in header
 				_standardEeprom.reset(new Eeprom24C02(_console));
 			}
@@ -125,6 +126,8 @@ protected:
 
 	void ProcessCpuClock() override
 	{
+		BaseProcessCpuClock();
+
 		if(_irqEnabled) {
 			//Checking counter before decrementing seems to be the only way to get both
 			//Famicom Jump II - Saikyou no 7 Nin (J) and Magical Taruruuto-kun 2 - Mahou Daibouken (J)
@@ -192,7 +195,7 @@ protected:
 				_irqEnabled = (value & 0x01) == 0x01;
 
 				//Wiki claims there is no reload value, however this seems to be the only way to make Famicom Jump II - Saikyou no 7 Nin work properly 
-				if(_romInfo.MapperID != 16 || !IsNes20() || _romInfo.SubMapperID == 5) {
+				if(_romInfo.MapperID != 16 || _romInfo.SubMapperID != 4) {
 					//"On the LZ93D50 (Submapper 5), writing to this register also copies the latch to the actual counter."
 					_irqCounter = _irqReload;
 				}
@@ -201,7 +204,7 @@ protected:
 				break;
 
 			case 0x0B:
-				if(_romInfo.MapperID != 16 || !IsNes20() || _romInfo.SubMapperID != 4) {
+				if(_romInfo.MapperID != 16 || _romInfo.SubMapperID != 4) {
 					//"On the LZ93D50 (Submapper 5), these registers instead modify a latch that will only be copied to the actual counter when register $800A is written to."
 					_irqReload = (_irqReload & 0xFF00) | value;
 				} else {
@@ -211,10 +214,10 @@ protected:
 				break;
 
 			case 0x0C:
-				if(_romInfo.MapperID != 16 || !IsNes20() || _romInfo.SubMapperID != 4) {
+				if(_romInfo.MapperID != 16 || _romInfo.SubMapperID != 4) {
 					_irqReload = (_irqReload & 0xFF) | (value << 8);
 				} else {
-					_irqCounter = (_irqCounter & 0xFF00) | value;
+					_irqCounter = (_irqCounter & 0xFF) | (value << 8);
 				}
 				break;
 

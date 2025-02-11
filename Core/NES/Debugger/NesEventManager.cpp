@@ -42,6 +42,7 @@ void NesEventManager::AddEvent(DebugEventType type, MemoryOperationInfo& operati
 	evt.BreakpointId = breakpointId;
 	evt.ProgramCounter = _debugger->GetProgramCounter(CpuType::Nes, true);
 	evt.DmaChannel = -1;
+	evt.Flags = (uint32_t)EventFlags::ReadWriteOp;
 
 	uint32_t addr = operation.Address;
 	bool isWrite = operation.Type == MemoryOperationType::Write || operation.Type == MemoryOperationType::DmaWrite || operation.Type == MemoryOperationType::DummyWrite;
@@ -55,16 +56,16 @@ void NesEventManager::AddEvent(DebugEventType type, MemoryOperationInfo& operati
 				evt.TargetMemory.MemType = MemoryType::NesSpriteRam;
 				evt.TargetMemory.Address = state.SpriteRamAddr;
 				evt.TargetMemory.Value = operation.Value;
-				evt.Flags = (uint32_t)EventFlags::WithTargetMemory;
+				evt.Flags |= (uint32_t)EventFlags::WithTargetMemory;
 				break;
 
 			case 5:
 			case 6:
 				//2005/2006 PPU register writes, mark as 2nd write when needed
 				if(state.WriteToggle) {
-					evt.Flags = (uint32_t)EventFlags::RegSecondWrite;
+					evt.Flags |= (uint32_t)EventFlags::RegSecondWrite;
 				} else {
-					evt.Flags = (uint32_t)EventFlags::RegFirstWrite;
+					evt.Flags |= (uint32_t)EventFlags::RegFirstWrite;
 				}
 				break;
 
@@ -74,7 +75,7 @@ void NesEventManager::AddEvent(DebugEventType type, MemoryOperationInfo& operati
 				evt.TargetMemory.MemType = MemoryType::NesPpuMemory;
 				evt.TargetMemory.Address = state.BusAddress;
 				evt.TargetMemory.Value = operation.Value;
-				evt.Flags = (uint32_t)EventFlags::WithTargetMemory;
+				evt.Flags |= (uint32_t)EventFlags::WithTargetMemory;
 				break;
 		}
 	}
@@ -168,9 +169,9 @@ EventViewerCategoryCfg NesEventManager::GetEventConfig(DebugEventInfo& evt)
 						case 0x2006: return _config.Ppu2006Write;
 						case 0x2007: return _config.Ppu2007Write;
 					}
-				} else if(addr >= 0x4018 && _mapper->IsWriteRegister(addr)) {
+				} else if(addr >= 0x4020 && _mapper->IsWriteRegister(addr)) {
 					return _config.MapperRegisterWrites;
-				} else if((addr >= 0x4000 && addr <= 0x4015) || addr == 0x4017) {
+				} else if((addr >= 0x4000 && addr <= 0x4015) || addr == 0x4017 || addr == 0x401A) {
 					return _config.ApuRegisterWrites;
 				} else if(addr == 0x4016) {
 					return _config.ControlRegisterWrites;
@@ -182,9 +183,9 @@ EventViewerCategoryCfg NesEventManager::GetEventConfig(DebugEventInfo& evt)
 						case 0x2004: return _config.Ppu2004Read;
 						case 0x2007: return _config.Ppu2007Read;
 					}
-				} else if(addr >= 0x4018 && _mapper->IsReadRegister(addr)) {
+				} else if(addr >= 0x4020 && _mapper->IsReadRegister(addr)) {
 					return _config.MapperRegisterReads;
-				} else if(addr >= 0x4000 && addr <= 0x4015) {
+				} else if((addr >= 0x4000 && addr <= 0x4015) || (addr >= 0x4018 && addr <= 0x401A)) {
 					return _config.ApuRegisterReads;
 				} else if(addr == 0x4016 || addr == 0x4017) {
 					return _config.ControlRegisterReads;
@@ -213,10 +214,10 @@ uint32_t NesEventManager::TakeEventSnapshot(bool forAutoRefresh)
 	uint16_t scanline = ppu->GetCurrentScanline() + 1;
 
 	if(scanline >= 240 || (scanline == 0 && cycle == 0)) {
-		memcpy(_ppuBuffer, ppu->GetScreenBuffer(false), NesConstants::ScreenPixelCount * sizeof(uint16_t));
+		memcpy(_ppuBuffer, ppu->GetScreenBuffer(false, true), NesConstants::ScreenPixelCount * sizeof(uint16_t));
 	} else {
 		uint32_t offset = (NesConstants::ScreenWidth * scanline);
-		memcpy(_ppuBuffer, ppu->GetScreenBuffer(false), offset * sizeof(uint16_t));
+		memcpy(_ppuBuffer, ppu->GetScreenBuffer(false, true), offset * sizeof(uint16_t));
 		memcpy(_ppuBuffer + offset, ppu->GetScreenBuffer(true) + offset, (NesConstants::ScreenPixelCount - offset) * sizeof(uint16_t));
 	}
 
@@ -270,6 +271,24 @@ void NesEventManager::DrawPixel(uint32_t *buffer, int32_t x, uint32_t y, uint32_
 	buffer[y * NesConstants::CyclesPerLine * 4 + NesConstants::CyclesPerLine * 2 + x * 2 + 1] = color;
 }
 
+void NesEventManager::ProcessNtscBorderColorEvents(vector<DebugEventInfo>& events, vector<uint16_t>& bgColor, uint32_t& currentPos, uint16_t& currentColor)
+{
+	for(DebugEventInfo& evt : events) {
+		if(evt.Type == DebugEventType::BgColorChange) {
+			uint32_t pos = ((evt.Scanline + 1) * NesConstants::CyclesPerLine) + evt.Cycle;
+			if(evt.Scanline >= 242) {
+				break;
+			}
+
+			if(pos >= currentPos) {
+				std::fill(bgColor.begin() + currentPos, bgColor.begin() + pos, currentColor);
+				currentPos = pos;
+				currentColor = evt.Operation.Address;
+			}
+		}
+	}
+}
+
 void NesEventManager::DrawNtscBorders(uint32_t *buffer)
 {
 	//Generate array of bg color for all pixels on the screen
@@ -278,17 +297,15 @@ void NesEventManager::DrawNtscBorders(uint32_t *buffer)
 	vector<uint16_t> bgColor;
 	bgColor.resize(NesConstants::CyclesPerLine * 243);
 
-	//TODO use bg color changes from previous frame when needed
-	for(DebugEventInfo &evt : _snapshotCurrentFrame) {
-		if(evt.Type == DebugEventType::BgColorChange) {
-			uint32_t pos = ((evt.Scanline + 1) * NesConstants::CyclesPerLine) + evt.Cycle;
-			if(pos >= currentPos && evt.Scanline < 242) {
-				std::fill(bgColor.begin() + currentPos, bgColor.begin() + pos, currentColor);
-				currentColor = evt.Operation.Address;
-				currentPos = pos;
-			}
-		}
+	ProcessNtscBorderColorEvents(_snapshotCurrentFrame, bgColor, currentPos, currentColor);
+	
+	if(!_forAutoRefresh && _snapshotScanline < 242) {
+		uint32_t snapshotPos = (_snapshotScanline * NesConstants::CyclesPerLine) + _snapshotCycle;
+		std::fill(bgColor.begin() + currentPos, bgColor.begin() + snapshotPos, currentColor);
+		currentPos = snapshotPos;
+		ProcessNtscBorderColorEvents(_snapshotPrevFrame, bgColor, currentPos, currentColor);
 	}
+
 	std::fill(bgColor.begin() + currentPos, bgColor.end(), currentColor);
 
 	for(uint32_t y = 1; y < 241; y++) {

@@ -66,7 +66,7 @@ void HermiteResampler::WriteSample(int16_t* out, uint32_t pos, int16_t left, int
 }
 
 template<bool addMode>
-uint32_t HermiteResampler::Resample(int16_t* in, uint32_t inSampleCount, int16_t* out, size_t maxOutSampleCount)
+uint32_t HermiteResampler::Resample(int16_t* in, uint32_t inSampleCount, int16_t* out, size_t maxOutSampleCount, bool fillToMax)
 {
 	maxOutSampleCount *= 2;
 	if(_pendingSamples.size() >= maxOutSampleCount) {
@@ -80,37 +80,50 @@ uint32_t HermiteResampler::Resample(int16_t* in, uint32_t inSampleCount, int16_t
 	_pendingSamples.clear();
 
 	if(_rateRatio == 1.0) {
-		uint32_t count = std::min((uint32_t)maxOutSampleCount - outPos, inSampleCount * 2);
-		memcpy(out+outPos, in, count * sizeof(int16_t));
-		for(uint32_t i = count; i < inSampleCount * 2; i += 2) {
-			_pendingSamples.push_back(in[i]);
-			_pendingSamples.push_back(in[i + 1]);
+		if(inSampleCount > 0) {
+			uint32_t count = std::min((uint32_t)maxOutSampleCount - outPos, inSampleCount * 2);
+			memcpy(out+outPos, in, count * sizeof(int16_t));
+			for(uint32_t i = count; i < inSampleCount * 2; i += 2) {
+				_pendingSamples.push_back(in[i]);
+				_pendingSamples.push_back(in[i + 1]);
+			}
+			_left = in[inSampleCount * 2 - 2];
+			_right = in[inSampleCount * 2 - 1];
+			outPos += count;
 		}
-		return (count + outPos) / 2;
-	}
+	} else {
+		for(uint32_t i = 0; i < inSampleCount * 2; i += 2) {
+			while(_fraction <= 1.0) {
+				//Generate interpolated samples until we have enough samples for the current source sample
+				_left = HermiteInterpolate(_prevLeft, _fraction);
+				_right = HermiteInterpolate(_prevRight, _fraction);
+				if(outPos <= maxOutSampleCount - 2) {
+					WriteSample<addMode>(out, outPos, _left, _right);
+					outPos += 2;
+				} else {
+					_pendingSamples.push_back(_left);
+					_pendingSamples.push_back(_right);
+				}
 
-	for(uint32_t i = 0; i < inSampleCount * 2; i += 2) {
-		while(_fraction <= 1.0) {
-			//Generate interpolated samples until we have enough samples for the current source sample
-			if(outPos <= maxOutSampleCount - 2) {
-				WriteSample<addMode>(out, outPos, HermiteInterpolate(_prevLeft, _fraction), HermiteInterpolate(_prevRight, _fraction));
-				outPos += 2;
-			} else {
-				_pendingSamples.push_back(HermiteInterpolate(_prevLeft, _fraction));
-				_pendingSamples.push_back(HermiteInterpolate(_prevRight, _fraction));
+				_fraction += _rateRatio;
 			}
 
-			_fraction += _rateRatio;
+			//Move to the next source sample
+			PushSample(_prevLeft, in[i]);
+			PushSample(_prevRight, in[i + 1]);
+			_fraction -= 1.0;
 		}
+	}
 
-		//Move to the next source sample
-		PushSample(_prevLeft, in[i]);
-		PushSample(_prevRight, in[i + 1]);
-		_fraction -= 1.0;
+	if(fillToMax) {
+		while(outPos < maxOutSampleCount) {
+			WriteSample<addMode>(out, outPos, _left, _right);
+			outPos += 2;
+		}
 	}
 
 	return outPos / 2;
 }
 
-template uint32_t HermiteResampler::Resample<true>(int16_t* in, uint32_t inSampleCount, int16_t* out, size_t maxOutSampleCount);
-template uint32_t HermiteResampler::Resample<false>(int16_t* in, uint32_t inSampleCount, int16_t* out, size_t maxOutSampleCount);
+template uint32_t HermiteResampler::Resample<true>(int16_t* in, uint32_t inSampleCount, int16_t* out, size_t maxOutSampleCount, bool fillToMax);
+template uint32_t HermiteResampler::Resample<false>(int16_t* in, uint32_t inSampleCount, int16_t* out, size_t maxOutSampleCount, bool fillToMax);

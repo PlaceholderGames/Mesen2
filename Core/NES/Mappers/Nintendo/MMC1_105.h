@@ -12,6 +12,7 @@ private:
 
 protected:
 	uint32_t GetDipSwitchCount() override { return 4; }
+	bool EnableCpuClockHook() override { return true; }
 
 	void InitMapper() override
 	{
@@ -33,6 +34,8 @@ protected:
 
 	void ProcessCpuClock() override
 	{
+		BaseProcessCpuClock();
+
 		if(_irqEnabled) {
 			_irqCounter++;
 			

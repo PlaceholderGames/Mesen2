@@ -37,6 +37,8 @@ namespace Mesen.Debugger.Windows
 		private MesenTextEditor _txtScriptLog;
 		private DispatcherTimer _timer;
 		private ScriptWindowViewModel _model;
+		
+		public ScriptWindowViewModel Model => _model;
 
 		static ScriptWindow()
 		{
@@ -60,6 +62,13 @@ namespace Mesen.Debugger.Windows
 			_model = model;
 			DataContext = model;
 			_textEditor = this.GetControl<MesenTextEditor>("Editor");
+
+			ColorHelper.InvalidateControlOnThemeChange(_textEditor, () => {
+				UpdateSyntaxDef();
+				_highlighting = HighlightingLoader.Load(_syntaxDef, HighlightingManager.Instance);
+				_textEditor.SyntaxHighlighting = _highlighting;
+			});
+
 			_textEditor.TextArea.KeyDown += TextArea_KeyDown;
 			_textEditor.TextArea.KeyUp += TextArea_KeyUp;
 			_textEditor.TextArea.TextEntered += TextArea_TextEntered;
@@ -174,6 +183,9 @@ namespace Mesen.Debugger.Windows
 					}
 					_prevTooltipEntry = entry;
 				}
+			} else {
+				TooltipHelper.HideTooltip(_textEditor.TextArea.TextView);
+				_prevTooltipEntry = null;
 			}
 		}
 

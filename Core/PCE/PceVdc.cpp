@@ -6,8 +6,9 @@
 #include "PCE/PceConstants.h"
 #include "PCE/PceConsole.h"
 #include "Shared/EmuSettings.h"
-#include "Utilities/Serializer.h"
 #include "Shared/EventType.h"
+#include "Shared/MessageManager.h"
+#include "Utilities/Serializer.h"
 
 PceVdc::PceVdc(Emulator* emu, PceConsole* console, PceVpc* vpc, PceVce* vce, bool isVdc2)
 {
@@ -23,8 +24,10 @@ PceVdc::PceVdc(Emulator* emu, PceConsole* console, PceVpc* vpc, PceVce* vce, boo
 	console->InitializeRam(_spriteRam, 0x200);
 
 	//These values can't ever be 0, init them to a possible value
-	_state.ColumnCount = 32;
-	_state.RowCount = 32;
+	_state.HvLatch.ColumnCount = 32;
+	_state.HvReg.ColumnCount = 32;
+	_state.HvLatch.RowCount = 32;
+	_state.HvReg.RowCount = 32;
 	_state.VramAddrIncrement = 1;
 
 	_state.HvReg.HorizDisplayWidth = 0x1F;
@@ -104,7 +107,7 @@ void PceVdc::Exec()
 void PceVdc::TriggerHdsIrqs()
 {
 	if(_needVertBlankIrq) {
-		ProcessEndOfVisibleFrame();
+		TriggerVerticalBlank();
 	}
 	if(_hasSpriteOverflow && _state.EnableOverflowIrq) {
 		_state.SpriteOverflow = true;
@@ -135,24 +138,25 @@ void PceVdc::ProcessEvent()
 
 	switch(_nextEvent) {
 		case PceVdcEvent::LatchScrollY:
-			_needRcrIncrement = true;
+			_needVCounterClock = true;
+			_latchClockY = _state.HClock;
 			IncScrollY();
-			_nextEvent = PceVdcEvent::LatchScrollX;
-			_nextEventCounter = DotsToClocks(1);
-			break;
-
-		case PceVdcEvent::LatchScrollX:
-			_state.HvLatch.BgScrollX = _state.HvReg.BgScrollX;
-			_nextEvent = PceVdcEvent::HdsIrqTrigger;
-			_nextEventCounter = DotsToClocks(7);
 			if(!_state.BurstModeEnabled) {
 				_state.BackgroundEnabled = _state.NextBackgroundEnabled;
 				_state.SpritesEnabled = _state.NextSpritesEnabled;
 			}
+			_nextEvent = PceVdcEvent::LatchScrollX;
+			_nextEventCounter = DotsToClocks(2);
+			break;
+
+		case PceVdcEvent::LatchScrollX:
+			_state.HvLatch.BgScrollX = _state.HvReg.BgScrollX;
+			_latchClockX = _state.HClock;
+			_nextEvent = PceVdcEvent::HdsIrqTrigger;
+			_nextEventCounter = DotsToClocks(6);
 			break;
 
 		case PceVdcEvent::HdsIrqTrigger:
-			_needRcrIncrement = true;
 			if(_evalStartCycle >= 1365) {
 				//New row was about to start, but no time to start sprite eval, next row will have no sprites
 				_spriteCount = 0;
@@ -180,6 +184,7 @@ void PceVdc::SetHorizontalMode(PceVdcModeH hMode)
 			break;
 
 		case PceVdcModeH::Hdw:
+			_needVCounterClock = true;
 			_needRcrIncrement = true;
 			_nextEvent = PceVdcEvent::IncRcrCounter;
 			_nextEventCounter = DotsToClocks((_state.HvLatch.HorizDisplayWidth - 1) * 8) + 2;
@@ -200,6 +205,7 @@ void PceVdc::SetHorizontalMode(PceVdcModeH hMode)
 			_loadBgStart = UINT16_MAX;
 			_evalStartCycle = UINT16_MAX;
 			_hModeCounter = DotsToClocks((_state.HvLatch.HorizSyncWidth + 1) * 8);
+			_hSyncStartClock = _console->GetMasterClock();
 			ProcessHorizontalSyncStart();
 			//LogDebug("H: " + std::to_string(_state.HClock) + " - HSW");
 			break;
@@ -213,6 +219,11 @@ void PceVdc::ProcessVerticalSyncStart()
 	_state.HvLatch.VertDisplayStart = _state.HvReg.VertDisplayStart;
 	_state.HvLatch.VertDisplayWidth = _state.HvReg.VertDisplayWidth;
 	_state.HvLatch.VertEndPosVcr = _state.HvReg.VertEndPosVcr;
+
+	_state.HvLatch.VramAccessMode = _state.HvReg.VramAccessMode;
+	_state.HvLatch.SpriteAccessMode = _state.HvReg.SpriteAccessMode;
+	_state.HvLatch.RowCount = _state.HvReg.RowCount;
+	_state.HvLatch.ColumnCount = _state.HvReg.ColumnCount;
 }
 
 void PceVdc::ProcessHorizontalSyncStart()
@@ -222,6 +233,7 @@ void PceVdc::ProcessHorizontalSyncStart()
 	_state.HvLatch.HorizDisplayStart = _state.HvReg.HorizDisplayStart;
 	_state.HvLatch.HorizDisplayWidth = _state.HvReg.HorizDisplayWidth;
 	_state.HvLatch.HorizDisplayEnd = _state.HvReg.HorizDisplayEnd;
+	_state.HvLatch.CgMode = _state.HvLatch.CgMode;
 
 	_nextEvent = PceVdcEvent::None;
 	_nextEventCounter = UINT16_MAX;
@@ -274,7 +286,7 @@ void PceVdc::ProcessHorizontalSyncStart()
 
 void PceVdc::ProcessSpriteEvaluation()
 {
-	if(_state.HClock < _evalStartCycle || _hasSpriteOverflow || _evalLastCycle >= 64 || _state.BurstModeEnabled) {
+	if(_state.HClock < _evalStartCycle || _evalLastCycle >= 64 || _state.BurstModeEnabled) {
 		return;
 	}
 
@@ -392,11 +404,11 @@ void PceVdc::LoadBackgroundTiles()
 
 	//LogDebug("BG: " + std::to_string(_loadBgLastCycle) + " -> " + std::to_string(end - 1));
 
-	uint16_t columnMask = _state.ColumnCount - 1;
+	uint16_t columnMask = _state.HvLatch.ColumnCount - 1;
 	uint16_t scrollOffset = _state.HvLatch.BgScrollX >> 3;
-	uint16_t row = (_state.HvLatch.BgScrollY) & ((_state.RowCount * 8) - 1);
+	uint16_t row = (_state.HvLatch.BgScrollY) & ((_state.HvLatch.RowCount * 8) - 1);
 
-	if(_state.VramAccessMode == 0) {
+	if(_state.HvLatch.VramAccessMode == 0) {
 		for(uint16_t i = _loadBgLastCycle; i < end; i++) {
 			if constexpr(skipRender) {
 				_allowVramAccess = (i & 0x01) == 0;
@@ -412,7 +424,7 @@ void PceVdc::LoadBackgroundTiles()
 				}
 			}
 		}
-	} else if(_state.VramAccessMode == 3) {
+	} else if(_state.HvLatch.VramAccessMode == 3) {
 		//Mode 3 is 4 cycles per read, CPU has no VRAM access, only 2BPP
 		LoadBackgroundTilesWidth4(end, scrollOffset, columnMask, row);
 	} else {
@@ -426,9 +438,11 @@ void PceVdc::LoadBackgroundTiles()
 void PceVdc::LoadBackgroundTilesWidth2(uint16_t end, uint16_t scrollOffset, uint16_t columnMask, uint16_t row)
 {
 	for(uint16_t i = _loadBgLastCycle; i < end; i++) {
+		_allowVramAccess = false;
 		switch(i & 0x07) {
 			case 1: LoadBatEntry(scrollOffset, columnMask, row); break;
 			case 2: _allowVramAccess = true; break; //CPU
+			case 3: _allowVramAccess = true; break; //CPU
 			case 5: LoadTileDataCg0(row); break;
 			case 7: LoadTileDataCg1(row); break;
 		}
@@ -444,9 +458,8 @@ void PceVdc::LoadBackgroundTilesWidth4(uint16_t end, uint16_t scrollOffset, uint
 
 			case 7:
 				//Load CG0 or CG1 based on CG mode flag
-				_tiles[_tileCount].TileData[0] = ReadVram(_tiles[_tileCount].TileAddr + (row & 0x07) + (_state.CgMode ? 8 : 0));
+				_tiles[_tileCount].TileData[0] = ReadVram(_tiles[_tileCount].TileAddr + (row & 0x07) + (_state.HvLatch.CgMode ? 8 : 0));
 				_tiles[_tileCount].TileData[1] = 0;
-				_allowVramAccess = false;
 				_tileCount++;
 				break;
 		}
@@ -456,7 +469,7 @@ void PceVdc::LoadBackgroundTilesWidth4(uint16_t end, uint16_t scrollOffset, uint
 void PceVdc::LoadBatEntry(uint16_t scrollOffset, uint16_t columnMask, uint16_t row)
 {
 	uint16_t tileColumn = (scrollOffset + _tileCount) & columnMask;
-	uint16_t batEntry = ReadVram((row >> 3) * _state.ColumnCount + tileColumn);
+	uint16_t batEntry = ReadVram((row >> 3) * _state.HvLatch.ColumnCount + tileColumn);
 	_tiles[_tileCount].Palette = batEntry >> 12;
 	_tiles[_tileCount].TileAddr = ((batEntry & 0xFFF) * 16);
 	_allowVramAccess = false;
@@ -492,7 +505,7 @@ void PceVdc::LoadSpriteTiles()
 	_drawSpriteCount = 0;
 	_rowHasSprite0 = false;
 
-	if(_state.BurstModeEnabled) {
+	if(_state.BurstModeEnabled || (_loadSpriteStart >= _loadBgStart && _loadSpriteStart < _loadBgEnd)) {
 		return;
 	}
 
@@ -500,10 +513,10 @@ void PceVdc::LoadSpriteTiles()
 	uint16_t clockCount = _loadSpriteStart > _loadBgStart ? (PceConstants::ClockPerScanline - _loadSpriteStart) + _loadBgStart : (_loadBgStart - _loadSpriteStart);
 	bool hasSprite0 = false;
 	memset(_xPosHasSprite, 0, sizeof(_xPosHasSprite));
-	if(_state.SpriteAccessMode != 1) {
+	if(_state.HvLatch.SpriteAccessMode != 1) {
 		//Modes 0/2/3 load 4 words over 4, 8 or 16 VDC clocks
 		uint16_t clocksPerSprite;
-		switch(_state.SpriteAccessMode) {
+		switch(_state.HvLatch.SpriteAccessMode) {
 			default: case 0: clocksPerSprite = 4; break;
 			case 2: clocksPerSprite = 8; break;
 			case 3: clocksPerSprite = 16; break;
@@ -546,8 +559,28 @@ void PceVdc::LoadSpriteTiles()
 	}
 }
 
+bool PceVdc::IsDmaAllowed()
+{
+	if(!_allowDma && !_state.BurstModeEnabled) {
+		//Can't DMA during rendering
+		return false;
+	}
+
+	if(_hMode == PceVdcModeH::Hsw && _console->GetMasterClock() - _hSyncStartClock <= DotsToClocks(8)) {
+		//VRAM accesses are blocked during the first 8 dots after horizontal sync,
+		//which prevents SATB/VRAM DMA from running during that time (based on test rom result)
+		return false;
+	}
+
+	return true;
+}
+
 void PceVdc::ProcessSatbTransfer()
 {
+	if(!IsDmaAllowed()) {
+		return;
+	}
+
 	//This takes 1024 VDC cycles (so 2048/3072/4096 master clocks depending on VCE/VDC speed)
 	//1 word transfered every 4 dots (8 to 16 master clocks, depending on VCE clock divider)
 	_state.SatbTransferNextWordCounter += 3;
@@ -575,7 +608,7 @@ void PceVdc::ProcessSatbTransfer()
 
 void PceVdc::ProcessVramDmaTransfer()
 {
-	if(_vMode == PceVdcModeV::Vdw) {
+	if(!IsDmaAllowed()) {
 		return;
 	}
 
@@ -616,18 +649,6 @@ void PceVdc::ProcessVramDmaTransfer()
 
 void PceVdc::SetVertMode(PceVdcModeV vMode)
 {
-	if(_vMode == PceVdcModeV::Vdw && vMode != PceVdcModeV::Vdw) {
-		//Some games (e.g Madou King Granzort) expect the DMA to run even if
-		//VDE is never reached (e.g because VDS+VDW take too much time)
-		//Run it as soon as we leave VDW
-		if(_state.SatbTransferPending || _state.RepeatSatbTransfer) {
-			_state.SatbTransferPending = false;
-			_state.SatbTransferRunning = true;
-			_state.SatbTransferNextWordCounter = 0;
-			_state.SatbTransferOffset = 0;
-		}
-	}
-
 	_vMode = vMode;
 	switch(_vMode) {
 		default:
@@ -636,6 +657,7 @@ void PceVdc::SetVertMode(PceVdcModeV vMode)
 			break;
 
 		case PceVdcModeV::Vdw:
+			_allowDma = false;
 			_vModeCounter = _state.HvLatch.VertDisplayWidth + 1;
 			_state.RcrCounter = 0;
 			break;
@@ -651,16 +673,21 @@ void PceVdc::SetVertMode(PceVdcModeV vMode)
 	}
 }
 
+void PceVdc::ClockVCounter()
+{
+	_vModeCounter--;
+	if(_vModeCounter == 0) {
+		SetVertMode((PceVdcModeV)(((int)_vMode + 1) % 4));
+	}
+	_needVCounterClock = false;
+}
+
 void PceVdc::IncrementRcrCounter()
 {
 	_state.RcrCounter++;
 
 	_needRcrIncrement = false;
-
-	_vModeCounter--;
-	if(_vModeCounter == 0) {
-		SetVertMode((PceVdcModeV)(((int)_vMode + 1) % 4));
-	}
+	ClockVCounter();
 
 	if(_vMode == PceVdcModeV::Vde && _state.RcrCounter == _state.HvLatch.VertDisplayWidth + 1) {
 		_needVertBlankIrq = true;
@@ -695,6 +722,9 @@ void PceVdc::ProcessEndOfScanline()
 	_state.HClock = 0;
 	_state.Scanline++;
 
+	_latchClockX = UINT16_MAX;
+	_latchClockY = UINT16_MAX;
+
 	if(_state.Scanline == 256) {
 		_state.FrameCount++;
 		_vpc->SendFrame(this);
@@ -716,6 +746,8 @@ void PceVdc::ProcessEndOfScanline()
 
 	if(_needRcrIncrement) {
 		IncrementRcrCounter();
+	} else if(_needVCounterClock) {
+		ClockVCounter();
 	}
 
 	if(_hMode == PceVdcModeH::Hdw) {
@@ -726,7 +758,11 @@ void PceVdc::ProcessEndOfScanline()
 	
 	//VCE sets HBLANK to low every 1365 clocks, interrupting what 
 	//the VDC was doing and starting a HSW phase
-	_hMode = PceVdcModeH::Hsw;
+	if(_hMode != PceVdcModeH::Hsw) {
+		_hMode = PceVdcModeH::Hsw;
+		_hSyncStartClock = _console->GetMasterClock();
+	}
+
 	_loadBgStart = UINT16_MAX;
 	_evalStartCycle = UINT16_MAX;
 
@@ -748,15 +784,31 @@ void PceVdc::ProcessEndOfScanline()
 	}
 }
 
-void PceVdc::ProcessEndOfVisibleFrame()
+void PceVdc::TriggerDmaStart()
 {
-	//End of display, trigger irq?
+	_allowDma = true;
+
+	if(_state.SatbTransferPending || _state.RepeatSatbTransfer) {
+		_state.SatbTransferPending = false;
+		_state.SatbTransferRunning = true;
+		_state.SatbTransferNextWordCounter = 0;
+		_state.SatbTransferOffset = 0;
+	}
+}
+
+void PceVdc::TriggerVerticalBlank()
+{
+	//End of display, trigger irq
 	if(_state.EnableVerticalBlankIrq) {
 		_state.VerticalBlank = true;
 		_vpc->SetIrq(this);
 	}
 
 	_needVertBlankIrq = false;
+
+	//Any pending SATB/VRAM DMA starts at the same time as the vblank irq is triggered
+	//This fixes the "new season" screen in "TV Sports Football"
+	TriggerDmaStart();
 }
 
 uint8_t PceVdc::GetTilePixelColor(const uint16_t chr0, const uint16_t chr1, const uint8_t shift)
@@ -893,7 +945,7 @@ void PceVdc::InternalDrawScanline()
 			uint16_t color = _vce->GetPalette(0);
 			for(; xStart < xMax; xStart++) {
 				//In picture, but BG is not enabled, draw bg color
-				out[xStart] = color;
+				out[xStart] = PceVpc::TransparentPixelFlag | color;
 			}
 		}
 	} else {
@@ -901,7 +953,7 @@ void PceVdc::InternalDrawScanline()
 			uint16_t color = _vce->GetPalette(16 * 16);
 			for(; xStart < xMax; xStart++) {
 				//Output hasn't started yet, display overscan color
-				out[xStart] = color;
+				out[xStart] = PceVpc::TransparentPixelFlag | color;
 			}
 		}
 	}
@@ -941,20 +993,95 @@ void PceVdc::ProcessVramWrite()
 
 void PceVdc::ProcessVramAccesses()
 {
-	bool inBgFetch = !_state.BurstModeEnabled && _state.HClock >= _loadBgStart && _state.HClock < _loadBgEnd;
-	bool accessBlocked = (
-		_state.SatbTransferRunning ||
-		(_vramDmaRunning && _vMode != PceVdcModeV::Vdw) ||
-		(inBgFetch && !_allowVramAccess) ||
-		(_state.SpritesEnabled && !inBgFetch && _vMode == PceVdcModeV::Vdw)
-	);
+	if(_transferDelay) {
+		_transferDelay -= 3;
+		if(_transferDelay > 0) {
+			return;
+		}
+	}
+
+	_transferDelay = 0;
+
+	bool inBgFetch = !_state.BurstModeEnabled && _state.HClock >= _loadBgStart && _state.HClock < _loadBgEnd && _state.Scanline >= 14 && _state.Scanline < 256;
+	bool accessBlocked;
+
+	if(_vMode != PceVdcModeV::Vdw || _state.BurstModeEnabled || (((!_state.SpritesEnabled || _spriteCount == 0) && !inBgFetch && _vMode == PceVdcModeV::Vdw))) {
+		//-During SATB/VRAM DMA, prevent all transfers.
+		//-Allow a VRAM read/write every other dot during:
+		//  -vblank
+		//  -forced blank (burst mode)
+		//  -sprite fetching when no sprites need to be fetched (sprites disabled or no sprites were found during sprite evaluation)
+		accessBlocked = (_state.SatbTransferRunning || _vramDmaRunning || ((_state.HClock / GetClockDivider()) & 0x01)) ? true : false;
+	} else {
+		//During tile/sprite fetching, only allow access on the CPU slots available during background tile fetches
+		accessBlocked = inBgFetch && !_allowVramAccess;
+		if(!accessBlocked && !inBgFetch && _state.SpritesEnabled) {
+			//Find how many clocks have elapsed since sprite fetching started
+			uint16_t clockCount = _state.HClock > _loadBgEnd ? (_state.HClock - _loadBgEnd) : (PceConstants::ClockPerScanline - _loadBgEnd + _state.HClock);
+			uint16_t dotCount = clockCount / GetClockDivider();
+			uint16_t clocksPerSprite;
+			switch(_state.HvLatch.SpriteAccessMode) {
+				default: case 0: case 1: clocksPerSprite = 4; break;
+				case 2: clocksPerSprite = 8; break;
+				case 3: clocksPerSprite = 16; break;
+			}
+			if(dotCount < _spriteCount * clocksPerSprite) {
+				//VDC is still fetching sprites, block access
+				accessBlocked = true;
+			} else {
+				//Sprite fetching is done, allow access every other dot
+				accessBlocked = ((_state.HClock / GetClockDivider()) & 0x01) ? true : false;
+			}
+		}
+	}
 
 	if(!accessBlocked) {
+		if(_hMode == PceVdcModeH::Hsw && _console->GetMasterClock() - _hSyncStartClock < 8 * GetClockDivider()) {
+			//VRAM accesses appear to be blocked during the first 8 dots of horizontal sync
+			return;
+		}
+
 		if(_pendingMemoryRead) {
 			ProcessVramRead();
 		} else if(_pendingMemoryWrite) {
 			ProcessVramWrite();
 		}
+	}
+}
+
+void PceVdc::QueueMemoryRead()
+{
+	//All of this is guesswork based on results from a test rom
+	//Read operations appear to be processed slightly slower than writes?
+	_pendingMemoryRead = true;
+	switch(GetClockDivider()) {
+		case 2: _transferDelay = 15; break; //5 exec ticks
+		case 3: _transferDelay = 24; break; //8 exec ticks
+		case 4: _transferDelay = 24; break; //8 exec ticks
+	}
+}
+
+void PceVdc::QueueMemoryWrite()
+{
+	//All of this is guesswork based on results from a test rom
+	//Write operations appear to be processed slightly faster than reads?
+	_pendingMemoryWrite = true;
+	switch(GetClockDivider()) {
+		case 2: _transferDelay = 12; break; //4 exec ticks
+		case 3: _transferDelay = 18; break; //6 exec ticks
+		case 4: _transferDelay = 21; break; //7 exec ticks
+	}
+}
+
+void PceVdc::WaitForVramAccess()
+{
+	//Stall the CPU when a read/write operation is pending
+	while(_pendingMemoryRead || _pendingMemoryWrite) {
+		//TODO timing, this is probably not quite right. CPU will be stalled until
+		//a VDC cycle that allows VRAM access is reached. This isn't always going to
+		//be a multiple of 3 master clocks like this currently assumes
+		_console->GetMemoryManager()->ExecFastCycle();
+		DrawScanline();
 	}
 }
 
@@ -989,45 +1116,22 @@ uint8_t PceVdc::ReadRegister(uint16_t addr)
 
 		//Reads to 2/3 will always return the read buffer, but the
 		//read address will only increment when register 2 is selected
-		case 2: 
-			WaitForVramAccess();
+		case 2:
+			if(_pendingMemoryRead) {
+				//D&D Order of the Griffon breaks without this
+				WaitForVramAccess();
+			}
 			return (uint8_t)_state.ReadBuffer;
 
 		case 3:
-			WaitForVramAccess();
-
+			if(_pendingMemoryRead) {
+				WaitForVramAccess();
+			}
 			uint8_t value = _state.ReadBuffer >> 8;
 			if(_state.CurrentReg == 0x02) {
-				_pendingMemoryRead = true;
+				QueueMemoryRead();
 			}
 			return value;
-	}
-}
-
-bool PceVdc::IsVramAccessBlocked()
-{
-	bool inBgFetch = !_state.BurstModeEnabled && _state.HClock >= _loadBgStart && _state.HClock < _loadBgEnd;
-	//TODO timing:
-	//does disabling sprites allow vram access during hblank?
-	//can you access vram after the VDC is done loading sprites for that scanline?
-	return (
-		_pendingMemoryRead ||
-		_pendingMemoryWrite ||
-		_state.SatbTransferRunning ||
-		(_vramDmaRunning && _vMode != PceVdcModeV::Vdw) ||
-		(inBgFetch && !_allowVramAccess) || 
-		(_state.SpritesEnabled && !inBgFetch && _vMode == PceVdcModeV::Vdw)
-	);
-}
-
-void PceVdc::WaitForVramAccess()
-{
-	while(IsVramAccessBlocked()) {
-		//TODO timing, this is probably not quite right. CPU will be stalled until
-		//a VDC cycle that allows VRAM access is reached. This isn't always going to
-		//be a multiple of 3 master clocks like this currently assumes
-		_console->GetMemoryManager()->ExecFastCycle();
-		DrawScanline();
 	}
 }
 
@@ -1045,20 +1149,24 @@ void PceVdc::WriteRegister(uint16_t addr, uint8_t value)
 			bool msb = (addr & 0x03) == 0x03;
 
 			switch(_state.CurrentReg) {
-				case 0x00: UpdateReg(_state.MemAddrWrite, value, msb); break;
+				case 0x00:
+					WaitForVramAccess(); //Wonder Momo has graphical issues without this
+					UpdateReg(_state.MemAddrWrite, value, msb);
+					break;
 
 				case 0x01:
+					WaitForVramAccess();
 					UpdateReg(_state.MemAddrRead, value, msb);
 					if(msb) {
-						_pendingMemoryRead = true;
+						QueueMemoryRead();
 					}
 					break;
 
 				case 0x02:
+					WaitForVramAccess();
 					if(msb) {
-						WaitForVramAccess();
 						UpdateReg(_state.VramData, value, true);
-						_pendingMemoryWrite = true;
+						QueueMemoryWrite();
 					} else {
 						UpdateReg(_state.VramData, value, false);
 					}
@@ -1085,29 +1193,44 @@ void PceVdc::WriteRegister(uint16_t addr, uint8_t value)
 
 						_state.NextSpritesEnabled = (value & 0x40) != 0;
 						_state.NextBackgroundEnabled = (value & 0x80) != 0;
+						if(_latchClockY == _state.HClock && !_state.BurstModeEnabled) {
+							//Write occurred at the same time as the CR latch, update latch too
+							_state.SpritesEnabled = _state.NextSpritesEnabled;
+							_state.BackgroundEnabled = _state.NextBackgroundEnabled;
+						}
 					}
 					break;
 
 				case 0x06: UpdateReg<0x3FF>(_state.RasterCompareRegister, value, msb); break;
-				case 0x07: UpdateReg<0x3FF>(_state.HvReg.BgScrollX, value, msb); break;
+				case 0x07:
+					UpdateReg<0x3FF>(_state.HvReg.BgScrollX, value, msb);
+					if(_latchClockX == _state.HClock) {
+						//Write occurred at the same time as the BXR latch, update latch too
+						_state.HvLatch.BgScrollX = _state.HvReg.BgScrollX;
+					}
+					break;
 				case 0x08:
 					UpdateReg<0x1FF>(_state.HvReg.BgScrollY, value, msb);
 					_state.BgScrollYUpdatePending = true;
+					if(_latchClockY == _state.HClock) {
+						//Write occurred at the same time as the BYR latch, update latch too
+						IncScrollY();
+					}
 					break;
 
 				case 0x09:
 					if(!msb) {
 						switch((value >> 4) & 0x03) {
-							case 0: _state.ColumnCount = 32; break;
-							case 1: _state.ColumnCount = 64; break;
-							case 2: case 3: _state.ColumnCount = 128; break;
+							case 0: _state.HvReg.ColumnCount = 32; break;
+							case 1: _state.HvReg.ColumnCount = 64; break;
+							case 2: case 3: _state.HvReg.ColumnCount = 128; break;
 						}
 
-						_state.RowCount = (value & 0x40) ? 64 : 32;
+						_state.HvReg.RowCount = (value & 0x40) ? 64 : 32;
 
-						_state.VramAccessMode = value & 0x03;
-						_state.SpriteAccessMode = (value >> 2) & 0x03;
-						_state.CgMode = (value & 0x80) != 0;
+						_state.HvReg.VramAccessMode = value & 0x03;
+						_state.HvReg.SpriteAccessMode = (value >> 2) & 0x03;
+						_state.HvReg.CgMode = (value & 0x80) != 0;
 					}
 					break;
 
@@ -1147,6 +1270,7 @@ void PceVdc::WriteRegister(uint16_t addr, uint8_t value)
 
 				case 0x0F:
 					if(!msb) {
+						LogDebugIf(_vramDmaRunning, "[VRAM DMA] Write to register while running");
 						_state.VramSatbIrqEnabled = (value & 0x01) != 0;
 						_state.VramVramIrqEnabled = (value & 0x02) != 0;
 						_state.DecrementSrc = (value & 0x04) != 0;
@@ -1155,9 +1279,18 @@ void PceVdc::WriteRegister(uint16_t addr, uint8_t value)
 					}
 					break;
 
-				case 0x10: UpdateReg(_state.BlockSrc, value, msb); break;
-				case 0x11: UpdateReg(_state.BlockDst, value, msb); break;
+				case 0x10:
+					LogDebugIf(_vramDmaRunning, "[VRAM DMA] Write to register while running");
+					UpdateReg(_state.BlockSrc, value, msb);
+					break;
+
+				case 0x11:
+					LogDebugIf(_vramDmaRunning, "[VRAM DMA] Write to register while running");
+					UpdateReg(_state.BlockDst, value, msb);
+					break;
+
 				case 0x12:
+					LogDebugIf(_vramDmaRunning, "[VRAM DMA] Write to register while running");
 					UpdateReg(_state.BlockLen, value, msb);
 					if(msb) {
 						_vramDmaRunning = true;
@@ -1166,6 +1299,7 @@ void PceVdc::WriteRegister(uint16_t addr, uint8_t value)
 					break;
 
 				case 0x13:
+					LogDebugIf(_state.SatbTransferRunning, "[Sprite DMA] Write to register while running");
 					UpdateReg(_state.SatbBlockSrc, value, msb);
 					if(msb) {
 						_state.SatbTransferPending = true;
@@ -1200,11 +1334,33 @@ void PceVdc::Serialize(Serializer& s)
 	SV(_state.BackgroundEnabled);
 	SV(_state.VramAddrIncrement);
 	SV(_state.RasterCompareRegister);
-	SV(_state.ColumnCount);
-	SV(_state.RowCount);
-	SV(_state.SpriteAccessMode);
-	SV(_state.VramAccessMode);
-	SV(_state.CgMode);
+
+	if(!s.IsSaving() && s.ContainsKey("ColumnCount")) {
+		//Backward-compatibility for older save states
+		s.Stream(_state.HvReg.ColumnCount, "ColumnCount");
+		s.Stream(_state.HvReg.RowCount, "RowCount");
+		s.Stream(_state.HvReg.SpriteAccessMode, "SpriteAccessMode");
+		s.Stream(_state.HvReg.VramAccessMode, "VramAccessMode");
+		s.Stream(_state.HvReg.CgMode, "CgMode");
+
+		_state.HvLatch.ColumnCount = _state.HvReg.ColumnCount;
+		_state.HvLatch.RowCount = _state.HvReg.RowCount;
+		_state.HvLatch.SpriteAccessMode = _state.HvReg.SpriteAccessMode;
+		_state.HvLatch.VramAccessMode = _state.HvReg.VramAccessMode;
+		_state.HvLatch.CgMode = _state.HvReg.CgMode;
+	} else {
+		SV(_state.HvLatch.ColumnCount);
+		SV(_state.HvLatch.RowCount);
+		SV(_state.HvLatch.SpriteAccessMode);
+		SV(_state.HvLatch.VramAccessMode);
+		SV(_state.HvLatch.CgMode);
+		SV(_state.HvReg.ColumnCount);
+		SV(_state.HvReg.RowCount);
+		SV(_state.HvReg.SpriteAccessMode);
+		SV(_state.HvReg.VramAccessMode);
+		SV(_state.HvReg.CgMode);
+	}
+
 	SV(_state.BgScrollYUpdatePending);
 	SV(_state.HvLatch.BgScrollX);
 	SV(_state.HvLatch.BgScrollY);
@@ -1261,6 +1417,7 @@ void PceVdc::Serialize(Serializer& s)
 
 		SV(_screenOffsetX);
 		SV(_needRcrIncrement);
+		SV(_needVCounterClock);
 		SV(_needVertBlankIrq);
 		SV(_verticalBlankDone);
 
@@ -1279,6 +1436,7 @@ void PceVdc::Serialize(Serializer& s)
 
 		SV(_pendingMemoryRead);
 		SV(_pendingMemoryWrite);
+		SV(_transferDelay);
 
 		SV(_vramDmaRunning);
 		SV(_vramDmaReadCycle);
@@ -1287,11 +1445,16 @@ void PceVdc::Serialize(Serializer& s)
 
 		SV(_nextEvent);
 		SV(_nextEventCounter);
+		SV(_hSyncStartClock);
+		SV(_allowDma);
 
 		SV(_drawSpriteCount);
 		SV(_totalSpriteCount);
 		SV(_rowHasSprite0);
 		SV(_loadSpriteStart);
+
+		SV(_latchClockX);
+		SV(_latchClockY);
 
 		SVArray(_xPosHasSprite, sizeof(_xPosHasSprite));
 

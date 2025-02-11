@@ -25,11 +25,13 @@ private:
 	PceAudioFader _audioFader;
 	PceCdAudioPlayer _audioPlayer;
 	PceCdRomState _state = {};
-	
+	uint64_t _latchChannelStamp = 0;
+
 	uint8_t* _cdromRam = nullptr;
 	uint32_t _cdromRamSize = 0;
 	uint8_t* _saveRam = nullptr;
 	uint32_t _saveRamSize = 0;
+	uint8_t* _orgSaveRam = nullptr;
 
 	void UpdateIrqState();
 
@@ -59,6 +61,10 @@ public:
 
 	PceCdAudioPlayer& GetAudioPlayer() { return _audioPlayer; }
 	PceAudioFader& GetAudioFader() { return _audioFader; }
+	
+	uint32_t GetCurrentSector();
+
+	void ProcessAudioPlaybackStart();
 
 	void SetIrqSource(PceCdRomIrqSource src);
 	void ClearIrqSource(PceCdRomIrqSource src);

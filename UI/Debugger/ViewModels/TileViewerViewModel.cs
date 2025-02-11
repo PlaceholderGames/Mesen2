@@ -71,6 +71,7 @@ namespace Mesen.Debugger.ViewModels
 		private object _updateLock = new();
 		private byte[] _coreSourceData = Array.Empty<byte>();
 		private byte[] _sourceData = Array.Empty<byte>();
+		private bool _refreshPending;
 
 		[Obsolete("For designer only")]
 		public TileViewerViewModel() : this(CpuType.Snes, new PictureViewer(), null) { }
@@ -137,7 +138,7 @@ namespace Mesen.Debugger.ViewModels
 				},
 			});
 
-			DebugShortcutManager.CreateContextMenu(picViewer, new List<object> {
+			AddDisposables(DebugShortcutManager.CreateContextMenu(picViewer, new List<object> {
 				new ContextMenuAction() {
 					ActionType = ActionType.EditTile,
 					HintText = () => $"{GridSizeX}px x {GridSizeY}px",
@@ -148,30 +149,11 @@ namespace Mesen.Debugger.ViewModels
 				new ContextMenuAction() {
 					ActionType = ActionType.EditTiles,
 					SubActions = new() {
-						new ContextMenuAction() {
-							ActionType = ActionType.Custom,
-							CustomText = $"1x2 ({GridSizeX}px x {GridSizeY*2}px)",
-							IsEnabled = () => GetSelectedTileAddress() >= 0,
-							OnClick = () => EditTileGrid(1, 2, wnd)
-						},
-						new ContextMenuAction() {
-							ActionType = ActionType.Custom,
-							CustomText = $"2x1 ({GridSizeX*2}px x {GridSizeY}px)",
-							IsEnabled = () => GetSelectedTileAddress() >= 0,
-							OnClick = () => EditTileGrid(2, 1, wnd)
-						},
-						new ContextMenuAction() {
-							ActionType = ActionType.Custom,
-							CustomText = $"2x2 ({GridSizeX*2}px x {GridSizeY*2}px)",
-							IsEnabled = () => GetSelectedTileAddress() >= 0,
-							OnClick = () => EditTileGrid(2, 2, wnd)
-						},
-						new ContextMenuAction() {
-							ActionType = ActionType.Custom,
-							CustomText = $"4x4 ({GridSizeX*4}px x {GridSizeY*4}px)",
-							IsEnabled = () => GetSelectedTileAddress() >= 0,
-							OnClick = () => EditTileGrid(4, 4, wnd)
-						}
+						GetEditTileAction(1, 2, wnd),
+						GetEditTileAction(2, 1, wnd),
+						GetEditTileAction(2, 2, wnd),
+						GetEditTileAction(4, 4, wnd),
+						GetEditTileAction(8, 8, wnd)
 					}
 				},
 				new ContextMenuSeparator(),
@@ -198,34 +180,44 @@ namespace Mesen.Debugger.ViewModels
 						}
 					}
 				}
-			});
+			}));
 
 			DebugShortcutManager.RegisterActions(wnd, FileMenuActions);
 			DebugShortcutManager.RegisterActions(wnd, ViewMenuActions);
 
 			InitForCpuType();
 
-			AddDisposable(this.WhenAnyValue(x => x.Config.Format).Subscribe(x => {
-				PaletteSelectionMode = x.GetBitsPerPixel() switch {
+			AddDisposable(this.WhenAnyValue(x => x.Config.Format, x => x.RawPalette).Subscribe(x => {
+				PaletteSelectionMode selMode = PaletteSelectionMode;
+				selMode = x.Item1.GetBitsPerPixel() switch {
 					1 => PaletteSelectionMode.TwoColors,
 					2 => PaletteSelectionMode.FourColors,
 					4 => PaletteSelectionMode.SixteenColors,
+					8 => RawPalette.Length >= 512 ? PaletteSelectionMode._256Colors : PaletteSelectionMode.None,
 					_ => PaletteSelectionMode.None
 				};
 
-				PixelSize tileSize = x.GetTileSize();
-				if(GridSizeX != tileSize.Width || GridSizeY != tileSize.Height) {
-					GridSizeX = tileSize.Width;
-					GridSizeY = tileSize.Height;
-					SelectionRect = default;
-					PreviewPanel = null;
-				}
+				if(selMode != PaletteSelectionMode) {
+					PaletteSelectionMode = selMode;
 
-				RefreshPalette();
+					PixelSize tileSize = x.Item1.GetTileSize();
+					if(GridSizeX != tileSize.Width || GridSizeY != tileSize.Height) {
+						GridSizeX = tileSize.Width;
+						GridSizeY = tileSize.Height;
+						SelectionRect = default;
+						PreviewPanel = null;
+					}
+
+					RefreshPalette();
+				}
 			}));
 
 			AddDisposable(this.WhenAnyValue(x => x.Config.Layout).Subscribe(x => {
 				ApplyColumnRowCountRestrictions();
+			}));
+
+			AddDisposable(this.WhenAnyValue(x => x.Config.StartAddress).Subscribe(x => {
+				RefreshData();
 			}));
 
 			AddDisposable(this.WhenAnyValue(x => x.Config.ColumnCount, x => x.Config.RowCount, x => x.Config.Format).Subscribe(x => {
@@ -235,6 +227,8 @@ namespace Mesen.Debugger.ViewModels
 
 				ApplyColumnRowCountRestrictions();
 				AddressIncrement = ColumnCount * RowCount * 8 * 8 * Config.Format.GetBitsPerPixel() / 8;
+
+				RefreshData();
 			}));
 
 			AddDisposable(this.WhenAnyValue(x => x.Config.Source).Subscribe(memType => {
@@ -278,6 +272,8 @@ namespace Mesen.Debugger.ViewModels
 				CpuType.Gameboy => new Enum[] { TileFormat.Bpp2 },
 				CpuType.Pce => new Enum[] { TileFormat.Bpp4, TileFormat.PceSpriteBpp4, TileFormat.PceSpriteBpp2Sp01, TileFormat.PceSpriteBpp2Sp23, TileFormat.PceBackgroundBpp2Cg0, TileFormat.PceBackgroundBpp2Cg1 },
 				CpuType.Sms => new Enum[] { TileFormat.SmsBpp4, TileFormat.SmsSgBpp1 },
+				CpuType.Gba => new Enum[] { TileFormat.GbaBpp4, TileFormat.GbaBpp8 },
+				CpuType.Ws => new Enum[] { TileFormat.Bpp2, TileFormat.SmsBpp4, TileFormat.WsBpp4Packed },
 				_ => throw new Exception("Unsupported CPU type")
 			};
 
@@ -295,6 +291,7 @@ namespace Mesen.Debugger.ViewModels
 				ResetToDefaultView();
 			}
 			ShowFilterDropdown = Config.Source.SupportsCdl();
+			MaximumAddress = Math.Max(0, DebugApi.GetMemorySize(Config.Source) - 1);
 
 			Dispatcher.UIThread.Post(() => {
 				Config.SelectedPreset = selectedPreset;
@@ -327,9 +324,8 @@ namespace Mesen.Debugger.ViewModels
 			SelectedPalette = paletteIndex;
 			Config.StartAddress = address / AddressIncrement * AddressIncrement;
 			Config.Layout = layout;
-			int bitsPerPixel = Config.Format.GetBitsPerPixel();
 			PixelSize tileSize = Config.Format.GetTileSize();
-			int bytesPerTile = tileSize.Width * tileSize.Height * bitsPerPixel / 8;
+			int bytesPerTile = Config.Format.GetBytesPerTile();
 
 			int gap = address - Config.StartAddress;
 			int tileNumber = gap / bytesPerTile;
@@ -422,8 +418,12 @@ namespace Mesen.Debugger.ViewModels
 			
 			RefreshPalette();
 
+			int bytesPerTile = Config.Format.GetBytesPerTile();
+			int tileCount = Config.RowCount * Config.ColumnCount;
+			int totalSize = bytesPerTile * tileCount;
+
 			lock(_updateLock) {
-				DebugApi.GetMemoryState(Config.Source, ref _coreSourceData);
+				DebugApi.GetMemoryValues(Config.Source, (uint)Config.StartAddress, (uint)(Config.StartAddress + totalSize - 1), ref _coreSourceData);
 			}
 
 			RefreshTab();
@@ -447,34 +447,48 @@ namespace Mesen.Debugger.ViewModels
 
 		private void RefreshTab()
 		{
+			if(_refreshPending) {
+				return;
+			}
+
+			_refreshPending = true;
 			Dispatcher.UIThread.Post(() => {
-				InitBitmap();
-				
-				lock(_updateLock) {
-					Array.Resize(ref _sourceData, _coreSourceData.Length);
-					Array.Copy(_coreSourceData, _sourceData, _coreSourceData.Length);
-				}
-
-				using(var framebuffer = ViewerBitmap.Lock()) {
-					DebugApi.GetTileView(CpuType, GetOptions(), _sourceData, _sourceData.Length, PaletteColors, framebuffer.FrameBuffer.Address);
-				}
-
-				if(IsNesChrModeEnabled) {
-					DrawNesChrPageDelimiters();
-				} else {
-					PageDelimiters = null;
-				}
-
-				UpdatePreviewPanel();
-				LoadSelectedPreset(true);
+				InternalRefreshTab();
+				_refreshPending = false;
 			});
+		}
+
+		private void InternalRefreshTab()
+		{
+			if(Disposed) {
+				return;
+			}
+
+			InitBitmap();
+				
+			lock(_updateLock) {
+				Array.Resize(ref _sourceData, _coreSourceData.Length);
+				Array.Copy(_coreSourceData, _sourceData, _coreSourceData.Length);
+			}
+
+			using(var framebuffer = ViewerBitmap.Lock()) {
+				DebugApi.GetTileView(CpuType, GetOptions(), _sourceData, _sourceData.Length, PaletteColors, framebuffer.FrameBuffer.Address);
+			}
+
+			if(IsNesChrModeEnabled) {
+				DrawNesChrPageDelimiters();
+			} else {
+				PageDelimiters = null;
+			}
+
+			UpdatePreviewPanel();
+			LoadSelectedPreset(true);
 		}
 
 		private int GetTileAddress(PixelPoint pixelPosition)
 		{
-			int bitsPerPixel = Config.Format.GetBitsPerPixel();
 			PixelSize tileSize = Config.Format.GetTileSize();
-			int bytesPerTile = tileSize.Width * tileSize.Height * bitsPerPixel / 8;
+			int bytesPerTile = Config.Format.GetBytesPerTile();
 			PixelPoint pos = FromLayoutCoordinates(Config.Layout, new PixelPoint(pixelPosition.X / tileSize.Width, pixelPosition.Y / tileSize.Height));
 			int offset = (pos.Y * ColumnCount * 8 / tileSize.Width + pos.X) * bytesPerTile;
 			return (Config.StartAddress + offset) % (MaximumAddress + 1);
@@ -539,6 +553,16 @@ namespace Mesen.Debugger.ViewModels
 			}
 		}
 
+		private ContextMenuAction GetEditTileAction(int columnCount, int rowCount, Window wnd)
+		{
+			return new ContextMenuAction() {
+				ActionType = ActionType.Custom,
+				CustomText = $"{columnCount}x{rowCount} ({GridSizeX * columnCount}px x {GridSizeY * rowCount}px)",
+				IsEnabled = () => GetSelectedTileAddress() >= 0,
+				OnClick = () => EditTileGrid(columnCount, rowCount, wnd)
+			};
+		}
+
 		private void EditTileGrid(int columnCount, int rowCount, Window wnd)
 		{
 			PixelPoint p = ViewerMousePos ?? PixelPoint.FromPoint(SelectionRect.TopLeft, 1);
@@ -548,7 +572,16 @@ namespace Mesen.Debugger.ViewModels
 					addresses.Add(new AddressInfo() { Address = GetTileAddress(new PixelPoint(p.X + col*GridSizeX, p.Y + row*GridSizeY)), Type = Config.Source });
 				}
 			}
-			TileEditorWindow.OpenAtTile(addresses, columnCount, Config.Format, SelectedPalette, wnd);
+			TileEditorWindow.OpenAtTile(
+				addresses,
+				columnCount,
+				Config.Format,
+				SelectedPalette,
+				wnd,
+				CpuType,
+				RefreshTiming.Config.RefreshScanline,
+				RefreshTiming.Config.RefreshCycle
+			);
 		}
 
 		private void DrawNesChrPageDelimiters()
@@ -757,6 +790,25 @@ namespace Mesen.Debugger.ViewModels
 						CreatePreset(0, "ROM", () => ApplyPrgPreset())
 					};
 
+				case CpuType.Gba:
+					return new() {
+						CreatePreset(0, "VRAM", () => ApplyPpuPreset()),
+						CreatePreset(0, "ROM", () => ApplyPrgPreset()),
+						CreatePreset(1, "BG1", () => ApplyBgPreset(0)),
+						CreatePreset(1, "BG2", () => ApplyBgPreset(1)),
+						CreatePreset(1, "BG3", () => ApplyBgPreset(2)),
+						CreatePreset(1, "BG4", () => ApplyBgPreset(3)),
+						CreatePreset(2, "Sprites", () => ApplySpritePreset(0)),
+					};
+
+				case CpuType.Ws:
+					return new() {
+						CreatePreset(0, "PPU", () => ApplyPpuPreset()),
+						CreatePreset(0, "ROM", () => ApplyPrgPreset()),
+						CreatePreset(1, "Bank 0", () => ApplyBgPreset(0)),
+						CreatePreset(1, "Bank 1", () => ApplyBgPreset(1)),
+					};
+
 				default:
 					throw new Exception("Unsupported CPU type");
 			}
@@ -764,13 +816,25 @@ namespace Mesen.Debugger.ViewModels
 
 		private PresetValues? ApplyPrgPreset()
 		{
+			BaseState? state = _ppuState;
+			if(state == null) {
+				return null;
+			}
+
 			PresetValues preset = new();
 			preset.Source = CpuType.GetPrgRomMemoryType();
 			preset.StartAddress = 0;
 			preset.ColumnCount = 16;
 			preset.RowCount = 32;
 			preset.Layout = TileLayout.Normal;
-			preset.Format = (TileFormat)AvailableFormats[0];
+
+			if(CpuType == CpuType.Ws) {
+				WsPpuState ppu = (WsPpuState)state;
+				preset.Format = ppu.Mode.ToTileFormat();
+			} else {
+				preset.Format = (TileFormat)AvailableFormats[0];
+			}
+
 			return preset;
 		}
 
@@ -837,6 +901,27 @@ namespace Mesen.Debugger.ViewModels
 					if(!vdp.UseMode4) {
 						preset.SelectedPalette = 1;
 					}
+					break;
+				}
+
+				case CpuType.Gba: {
+					preset.Source = MemoryType.GbaVideoRam;
+					preset.StartAddress = 0;
+					preset.ColumnCount = 16;
+					preset.RowCount = 128;
+					preset.Layout = TileLayout.Normal;
+					preset.Format = TileFormat.GbaBpp4;
+					break;
+				}
+
+				case CpuType.Ws: {
+					WsPpuState ppu = (WsPpuState)state;
+					preset.Source = MemoryType.WsWorkRam;
+					preset.StartAddress = 0;
+					preset.ColumnCount = 16;
+					preset.RowCount = 128;
+					preset.Layout = TileLayout.Normal;
+					preset.Format = ppu.Mode.ToTileFormat();
 					break;
 				}
 			}
@@ -922,6 +1007,34 @@ namespace Mesen.Debugger.ViewModels
 					}
 					break;
 				}
+
+				case CpuType.Gba: {
+					GbaPpuState ppu = (GbaPpuState)state;
+					preset.Source = MemoryType.GbaVideoRam;
+					preset.ColumnCount = 16;
+					preset.RowCount = 64;
+					preset.Layout = TileLayout.Normal;
+					preset.StartAddress = ppu.BgLayers[layer].TilesetAddr;
+					preset.Format = ppu.BgLayers[layer].Bpp8Mode ? TileFormat.GbaBpp8 : TileFormat.GbaBpp4;
+					if(preset.Format == TileFormat.GbaBpp8 || preset.Format == TileFormat.GbaBpp4 && preset.SelectedPalette > 16) {
+						preset.SelectedPalette = 0;
+					}
+					break;
+				}
+
+				case CpuType.Ws: {
+					WsPpuState ppu = (WsPpuState)state;
+					int bank0Addr = ppu.Mode >= WsVideoMode.Color4bpp ? 0x4000 : 0x2000;
+					int bank1Addr = ppu.Mode >= WsVideoMode.Color4bpp ? 0x8000 : (ppu.Mode == WsVideoMode.Monochrome ? 0x2000 : 0x4000);
+					
+					preset.Source = MemoryType.WsWorkRam;
+					preset.StartAddress = layer == 0 ? bank0Addr : bank1Addr;
+					preset.ColumnCount = 16;
+					preset.RowCount = 128;
+					preset.Layout = TileLayout.Normal;
+					preset.Format = ppu.Mode.ToTileFormat();
+					break;
+				}
 			}
 
 			return preset;
@@ -995,6 +1108,20 @@ namespace Mesen.Debugger.ViewModels
 					preset.RowCount = 64;
 					preset.Layout = TileLayout.Normal;
 					preset.Format = TileFormat.PceSpriteBpp4;
+					preset.Background = TileBackground.Default;
+					if(SelectedPalette < 16) {
+						preset.SelectedPalette = 16;
+					}
+					break;
+				}
+
+				case CpuType.Gba: {
+					preset.Source = MemoryType.GbaVideoRam;
+					preset.StartAddress = 0x10000;
+					preset.ColumnCount = 32;
+					preset.RowCount = 32;
+					preset.Layout = TileLayout.Normal;
+					preset.Format = TileFormat.GbaBpp4;
 					preset.Background = TileBackground.Default;
 					if(SelectedPalette < 16) {
 						preset.SelectedPalette = 16;

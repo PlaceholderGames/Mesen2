@@ -14,7 +14,7 @@
 #include "Gameboy/Carts/GbsCart.h"
 #include "Gameboy/GbBootRom.h"
 #include "Gameboy/GbDefaultVideoFilter.h"
-#include "SNES/SnesNtscFilter.h"
+#include "Gameboy/GbxFooter.h"
 #include "Debugger/DebugTypes.h"
 #include "Shared/CheatManager.h"
 #include "Shared/BatteryManager.h"
@@ -22,9 +22,10 @@
 #include "Shared/BaseControlManager.h"
 #include "Shared/EmuSettings.h"
 #include "Shared/MessageManager.h"
+#include "Shared/FirmwareHelper.h"
 #include "Utilities/VirtualFile.h"
 #include "Utilities/Serializer.h"
-#include "Shared/FirmwareHelper.h"
+#include "Utilities/CRC32.h"
 
 Gameboy::Gameboy(Emulator* emu, bool allowSgb)
 {
@@ -147,6 +148,8 @@ void Gameboy::PowerOn(SuperGameboy *sgb)
 	_cpu->Init(_emu, this, _memoryManager.get());
 	_ppu->Init(_emu, this, _memoryManager.get(), _dmaController.get(), _videoRam, _spriteRam);
 	_dmaController->Init(this, _memoryManager.get(), _ppu.get(), _cpu.get());
+
+	_cpu->PowerOn();
 }
 
 void Gameboy::Run(uint64_t runUntilClock)
@@ -309,11 +312,9 @@ int32_t Gameboy::GetRelativeAddress(AddressInfo& absAddress)
 	return -1;
 }
 
-GameboyHeader Gameboy::GetHeader()
+bool Gameboy::IsCpuStopped()
 {
-	GameboyHeader header;
-	memcpy(&header, _prgRom + Gameboy::HeaderOffset, sizeof(GameboyHeader));
-	return header;
+	return _cpu->GetState().Stopped;
 }
 
 bool Gameboy::IsCgb()
@@ -385,9 +386,6 @@ LoadRomResult Gameboy::LoadRom(VirtualFile& romFile)
 		return LoadRomResult::Failure;
 	}
 
-	MessageManager::Log("-----------------------------");
-	MessageManager::Log("File: " + romFile.GetFileName());
-
 	GbsHeader gbsHeader = {};
 	memcpy(&gbsHeader, romData.data(), sizeof(GbsHeader));
 	if(!_allowSgb && memcmp(gbsHeader.Header, "GBS", sizeof(gbsHeader.Header)) == 0) {
@@ -402,6 +400,9 @@ LoadRomResult Gameboy::LoadRom(VirtualFile& romFile)
 			gbsRomData.insert(gbsRomData.end(), 0x4000 - (gbsRomData.size() & 0x3FFF), 0);
 		}
 		
+		MessageManager::Log("-----------------------------");
+		MessageManager::Log("File: " + romFile.GetFileName());
+
 		GbsCart* cart = new GbsCart(gbsHeader);
 		_model = GameboyModel::GameboyColor;
 		Init(cart, gbsRomData, 0x5000, false);
@@ -409,14 +410,23 @@ LoadRomResult Gameboy::LoadRom(VirtualFile& romFile)
 
 		return LoadRomResult::Success;
 	} else {
-		GameboyHeader header;
-		memcpy(&header, romData.data() + Gameboy::HeaderOffset, sizeof(GameboyHeader));
+		GbxFooter gbxFooter = {};
+		gbxFooter.Init(romData);
+
+		if((romData.size() & 0x3FFF) != 0) {
+			//Pad to multiple of 16kb
+			romData.insert(romData.end(), 0x4000 - (romData.size() & 0x3FFF), 0);
+		}
+
+		GameboyHeader header = GetHeader(romData.data(), (uint32_t)romData.size());
 
 		_model = GetEffectiveModel(header);
 		if(_allowSgb && _model != GameboyModel::SuperGameboy) {
 			return LoadRomResult::UnknownType;
 		}
 
+		MessageManager::Log("-----------------------------");
+		MessageManager::Log("File: " + romFile.GetFileName());
 		MessageManager::Log("Game: " + header.GetCartName());
 		MessageManager::Log("Cart Type: " + std::to_string(header.CartType));
 		switch((CgbCompat)((int)header.CgbFlag & 0xC0)) {
@@ -433,20 +443,62 @@ LoadRomResult Gameboy::LoadRom(VirtualFile& romFile)
 			string sizeString = header.GetCartRamSize() > 1024 ? std::to_string(header.GetCartRamSize() / 1024) + " KB" : std::to_string(header.GetCartRamSize()) + " bytes";
 			MessageManager::Log("Cart RAM size: " + sizeString + (header.HasBattery() ? " (with battery)" : ""));
 		}
+
+		GbCart* cart = GbCartFactory::CreateCart(_emu, header, gbxFooter, romData);
+		
 		MessageManager::Log("-----------------------------");
 
-		GbCart* cart = GbCartFactory::CreateCart(_emu, header);
-
 		if(cart) {
-			Init(cart, romData, header.GetCartRamSize(), header.HasBattery());
+			if(gbxFooter.IsValid()) {
+				Init(cart, romData, gbxFooter.GetRamSize(), gbxFooter.HasBattery());
+			} else {
+				Init(cart, romData, header.GetCartRamSize(), header.HasBattery());
+			}
 			return LoadRomResult::Success;
 		} else {
-			MessageManager::DisplayMessage("Error", "Unsupported cart type: " + std::to_string(header.CartType));
+			MessageManager::DisplayMessage("Error", "Unsupported cart type: " + (gbxFooter.IsValid() ? gbxFooter.GetMapperId() : std::to_string(header.CartType)));
 			return LoadRomResult::Failure;
 		}
 	}
 
 	return LoadRomResult::UnknownType;
+}
+
+GameboyHeader Gameboy::GetHeader(uint8_t* romData, uint32_t romSize)
+{
+	GameboyHeader header = {};
+	memcpy(&header, romData + Gameboy::HeaderOffset, sizeof(GameboyHeader));
+
+	if(romSize > 0x8000) {
+		uint32_t logoPosition = (uint32_t)(romSize - 0x8000 + 0x104);
+		if(CRC32::GetCRC(&romData[logoPosition], 0x30) == 0x46195417) {
+			//Found logo at the end of the rom, use this header instead
+			//MMM01 games have the header here because of their default mappings at power on
+			int offset = (int)(romSize - 0x8000 + Gameboy::HeaderOffset);
+			memcpy(&header, romData + offset, sizeof(GameboyHeader));
+
+			uint8_t headerChecksum = 0;
+			for(int i = 0; i < sizeof(GameboyHeader) - 3; i++) {
+				headerChecksum = headerChecksum - romData[offset + i] - 1;
+			}
+			if(header.CartType == 0x11) {
+				//Mani 4-in-1 has carttype set as $11, but is actually a MMM01 cart
+				header.CartType = 0x0B;
+			}
+
+			if(headerChecksum != header.HeaderChecksum) {
+				//Invalid header, ignore it and use the default header location instead
+				memcpy(&header, romData + Gameboy::HeaderOffset, sizeof(GameboyHeader));
+			}
+		}
+	}
+
+	return header;
+}
+
+GameboyHeader Gameboy::GetHeader()
+{
+	return GetHeader(_prgRom, _prgRomSize);
 }
 
 GameboyModel Gameboy::GetEffectiveModel(GameboyHeader& header)
@@ -496,13 +548,15 @@ void Gameboy::RunFrame()
 	while(frameCount == _ppu->GetFrameCount()) {
 		_cpu->Exec();
 	}
+
+	_apu->Run();
+	_apu->PlayQueuedAudio();
 }
 
 void Gameboy::ProcessEndOfFrame()
 {
 	_controlManager->UpdateControlDevices();
 	_controlManager->UpdateInputState();
-	_apu->Run();
 }
 
 BaseControlManager* Gameboy::GetControlManager()
@@ -562,7 +616,7 @@ uint32_t Gameboy::GetMasterClockRate()
 BaseVideoFilter* Gameboy::GetVideoFilter(bool getDefaultFilter)
 {
 	if(getDefaultFilter || GetRomFormat() == RomFormat::Gbs) {
-		return new GbDefaultVideoFilter(_emu);
+		return new GbDefaultVideoFilter(_emu, false);
 	}
 
 	VideoFilterType filterType = _emu->GetSettings()->GetVideoConfig().VideoFilter;
@@ -570,10 +624,10 @@ BaseVideoFilter* Gameboy::GetVideoFilter(bool getDefaultFilter)
 	switch(filterType) {
 		case VideoFilterType::NtscBlargg:
 		case VideoFilterType::NtscBisqwit:
-			return new SnesNtscFilter(_emu);
+			return new GbDefaultVideoFilter(_emu, true);
 
 		default:
-			return new GbDefaultVideoFilter(_emu);
+			return new GbDefaultVideoFilter(_emu, false);
 	}
 }
 

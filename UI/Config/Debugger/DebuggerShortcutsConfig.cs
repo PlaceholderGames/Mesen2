@@ -79,6 +79,8 @@ namespace Mesen.Config
 			Add(new() { Shortcut = DebuggerShortcut.Copy, KeyBinding = new(KeyModifiers.Control, Key.C) });
 			Add(new() { Shortcut = DebuggerShortcut.Paste, KeyBinding = new(KeyModifiers.Control, Key.V) });
 			Add(new() { Shortcut = DebuggerShortcut.SelectAll, KeyBinding = new(KeyModifiers.Control, Key.A) });
+			
+			Add(new() { Shortcut = DebuggerShortcut.Undo, KeyBinding = new(KeyModifiers.Control, Key.Z) });
 
 			Add(new() { Shortcut = DebuggerShortcut.Refresh, KeyBinding = new(Key.F5) });
 
@@ -98,6 +100,7 @@ namespace Mesen.Config
 			Add(new() { Shortcut = DebuggerShortcut.OpenDebugger, KeyBinding = new(KeyModifiers.Control, Key.D) });
 			Add(new() { Shortcut = DebuggerShortcut.OpenSpcDebugger, KeyBinding = new(KeyModifiers.Control, Key.F) });
 			Add(new() { Shortcut = DebuggerShortcut.OpenSa1Debugger, KeyBinding = new() });
+			Add(new() { Shortcut = DebuggerShortcut.OpenSt018Debugger, KeyBinding = new() });
 			Add(new() { Shortcut = DebuggerShortcut.OpenGsuDebugger, KeyBinding = new() });
 			Add(new() { Shortcut = DebuggerShortcut.OpenNecDspDebugger, KeyBinding = new() });
 			Add(new() { Shortcut = DebuggerShortcut.OpenCx4Debugger, KeyBinding = new() });
@@ -131,6 +134,8 @@ namespace Mesen.Config
 			Add(new() { Shortcut = DebuggerShortcut.StepOver, KeyBinding = new(Key.F10) });
 			Add(new() { Shortcut = DebuggerShortcut.StepOut, KeyBinding = new(KeyModifiers.Shift, Key.F11) });
 			Add(new() { Shortcut = DebuggerShortcut.StepBack, KeyBinding = new(KeyModifiers.Shift, Key.F10) });
+			Add(new() { Shortcut = DebuggerShortcut.StepBackScanline, KeyBinding = new(KeyModifiers.Shift, Key.F7) });
+			Add(new() { Shortcut = DebuggerShortcut.StepBackFrame, KeyBinding = new(KeyModifiers.Shift, Key.F8) });
 
 			Add(new() { Shortcut = DebuggerShortcut.RunCpuCycle, KeyBinding = new() });
 			Add(new() { Shortcut = DebuggerShortcut.RunPpuCycle, KeyBinding = new(Key.F6) });
@@ -182,6 +187,7 @@ namespace Mesen.Config
 			Add(new() { Shortcut = DebuggerShortcut.FunctionList_FindOccurrences, KeyBinding = new() });
 
 			Add(new() { Shortcut = DebuggerShortcut.BreakpointList_Add, KeyBinding = new(Key.Insert) });
+			Add(new() { Shortcut = DebuggerShortcut.BreakpointList_AddForbid, KeyBinding = new(KeyModifiers.Control, Key.Insert) });
 			Add(new() { Shortcut = DebuggerShortcut.BreakpointList_Edit, KeyBinding = new(Key.F2) });
 			Add(new() { Shortcut = DebuggerShortcut.BreakpointList_GoToLocation, KeyBinding = new() });
 			Add(new() { Shortcut = DebuggerShortcut.BreakpointList_ViewInMemoryViewer, KeyBinding = new() });
@@ -262,7 +268,7 @@ namespace Mesen.Config
 			//Trace Logger
 			Add(new() { Shortcut = DebuggerShortcut.TraceLogger_EditBreakpoint, KeyBinding = new() });
 			Add(new() { Shortcut = DebuggerShortcut.TraceLogger_EditLabel, KeyBinding = new(Key.F2) });
-			Add(new() { Shortcut = DebuggerShortcut.TraceLogger_ViewInDebugger, KeyBinding = new(Key.F3) });
+			Add(new() { Shortcut = DebuggerShortcut.TraceLogger_ViewInDebugger, KeyBinding = new(KeyModifiers.Control, Key.F1) });
 			Add(new() { Shortcut = DebuggerShortcut.TraceLogger_ViewInMemoryViewer, KeyBinding = new(Key.F1) });
 
 			//Script Window
@@ -295,6 +301,7 @@ namespace Mesen.Config
 		FindPrev,
 		Copy,
 		Paste,
+		Undo,
 		SelectAll,
 		Refresh,
 		MarkAsCode,
@@ -311,6 +318,7 @@ namespace Mesen.Config
 		OpenDebugger,
 		OpenSpcDebugger,
 		OpenSa1Debugger,
+		OpenSt018Debugger,
 		OpenGsuDebugger,
 		OpenNecDspDebugger,
 		OpenCx4Debugger,
@@ -340,6 +348,8 @@ namespace Mesen.Config
 		StepOver,
 		StepOut,
 		StepBack,
+		StepBackScanline,
+		StepBackFrame,
 		RunCpuCycle,
 		RunPpuCycle,
 		RunPpuScanline,
@@ -376,6 +386,7 @@ namespace Mesen.Config
 		FunctionList_FindOccurrences,
 		FunctionList_ViewInMemoryViewer,
 		BreakpointList_Add,
+		BreakpointList_AddForbid,
 		BreakpointList_Edit,
 		BreakpointList_GoToLocation,
 		BreakpointList_ViewInMemoryViewer,
@@ -488,7 +499,20 @@ namespace Mesen.Config
 		public override string ToString()
 		{
 			if(ShortcutKey != Key.None) {
-				string shortcut = new KeyGesture(ShortcutKey, Modifiers).ToString();
+				KeyModifiers modifiers = Modifiers;
+				switch(ShortcutKey) {
+					case Key.LeftAlt:
+					case Key.LeftShift:
+					case Key.LeftCtrl:
+					case Key.RightAlt:
+					case Key.RightShift:
+					case Key.RightCtrl:
+						//Display "LeftCtrl" as "LeftCtrl" instead of "Ctrl+LeftCtrl", etc.
+						modifiers = KeyModifiers.None;
+						break;
+				}
+
+				string shortcut = new KeyGesture(ShortcutKey, modifiers).ToString();
 				shortcut = shortcut.Replace("Oem", "");
 				
 				//Rename D0-D9 to 0-9

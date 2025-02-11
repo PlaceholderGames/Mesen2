@@ -7,6 +7,7 @@ using ReactiveUI;
 using ReactiveUI.Fody.Helpers;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -30,6 +31,9 @@ namespace Mesen.Config
 		[Reactive] public GameboyConfig Gameboy { get; set; } = new();
 		[Reactive] public PcEngineConfig PcEngine { get; set; } = new();
 		[Reactive] public SmsConfig Sms { get; set; } = new();
+		[Reactive] public CvConfig Cv { get; set; } = new();
+		[Reactive] public GbaConfig Gba { get; set; } = new();
+		[Reactive] public WsConfig Ws { get; set; } = new();
 		[Reactive] public PreferencesConfig Preferences { get; set; } = new();
 		[Reactive] public AudioPlayerConfig AudioPlayer { get; set; } = new();
 		[Reactive] public DebugConfig Debug { get; set; } = new();
@@ -79,10 +83,13 @@ namespace Mesen.Config
 			Input.ApplyConfig();
 			Emulation.ApplyConfig();
 			Gameboy.ApplyConfig();
+			Gba.ApplyConfig();
 			PcEngine.ApplyConfig();
 			Nes.ApplyConfig();
 			Snes.ApplyConfig();
 			Sms.ApplyConfig();
+			Cv.ApplyConfig();
+			Ws.ApplyConfig();
 			Preferences.ApplyConfig();
 			AudioPlayer.ApplyConfig();
 			Debug.ApplyConfig();
@@ -106,6 +113,18 @@ namespace Mesen.Config
 		{
 			if(ConfigUpgrade < (int)ConfigUpgradeHint.SmsInput) {
 				Sms.InitializeDefaults(DefaultKeyMappings);
+			} 
+			
+			if(ConfigUpgrade < (int)ConfigUpgradeHint.GbaInput) {
+				Gba.InitializeDefaults(DefaultKeyMappings);
+			}
+
+			if(ConfigUpgrade < (int)ConfigUpgradeHint.CvInput) {
+				Cv.InitializeDefaults(DefaultKeyMappings);
+			}
+
+			if(ConfigUpgrade < (int)ConfigUpgradeHint.WsInput) {
+				Ws.InitializeDefaults(DefaultKeyMappings);
 			}
 
 			ConfigUpgrade = (int)ConfigUpgradeHint.NextValue - 1;
@@ -117,19 +136,53 @@ namespace Mesen.Config
 				Snes.InitializeDefaults(DefaultKeyMappings);
 				Nes.InitializeDefaults(DefaultKeyMappings);
 				Gameboy.InitializeDefaults(DefaultKeyMappings);
+				Gba.InitializeDefaults(DefaultKeyMappings);
 				PcEngine.InitializeDefaults(DefaultKeyMappings);
 				Sms.InitializeDefaults(DefaultKeyMappings);
+				Cv.InitializeDefaults(DefaultKeyMappings);
+				Ws.InitializeDefaults(DefaultKeyMappings);
 				ConfigUpgrade = (int)ConfigUpgradeHint.NextValue - 1;
 			}
 			Preferences.InitializeDefaultShortcuts();
 		}
 
 		private static HashSet<string>? _installedFonts = null;
+		private static List<string>? _sortedFonts = null;
+
+		[MemberNotNull(nameof(_installedFonts), nameof(_sortedFonts))]
+		private static void InitInstalledFonts()
+		{
+			_installedFonts = new();
+			_sortedFonts = new();
+			try {
+				int count = FontManager.Current.SystemFonts.Count;
+				for(int i = 0; i < count; i++) {
+					try {
+						string? fontName = FontManager.Current.SystemFonts[i]?.Name;
+						if(!string.IsNullOrWhiteSpace(fontName)) {
+							_installedFonts.Add(fontName);
+						}
+					} catch { }
+				}
+
+				_sortedFonts.AddRange(_installedFonts);
+				_sortedFonts.Sort();
+			} catch {
+			}
+		}
+
+		public static List<string> GetSortedFontList()
+		{
+			if(_sortedFonts == null) {
+				InitInstalledFonts();
+			}
+			return new List<string>(_sortedFonts);
+		}
 
 		private static string FindMatchingFont(string defaultFont, params string[] fontNames)
 		{
 			if(_installedFonts == null) {
-				_installedFonts = new(FontManager.Current.SystemFonts.Select(x => x.Name));
+				InitInstalledFonts();
 			}
 
 			foreach(string name in fontNames) {
@@ -144,7 +197,7 @@ namespace Mesen.Config
 		public static string GetValidFontFamily(string requestedFont, bool preferMonoFont)
 		{
 			if(_installedFonts == null) {
-				_installedFonts = new(FontManager.Current.SystemFonts.Select(x => x.Name));
+				InitInstalledFonts();
 			}
 
 			if(_installedFonts.Contains(requestedFont)) {
@@ -201,15 +254,12 @@ namespace Mesen.Config
 
 			try {
 				string fileData = File.ReadAllText(configFile);
-				config = JsonSerializer.Deserialize<Configuration>(fileData, JsonHelper.Options) ?? Configuration.CreateConfig();
+				config = (Configuration?)JsonSerializer.Deserialize(fileData, typeof(Configuration), MesenSerializerContext.Default) ?? Configuration.CreateConfig();
 				config._fileData = fileData;
 			} catch {
 				try {
 					//File exists but couldn't be loaded, make a backup of the old settings before we overwrite them
-					string? folder = Path.GetDirectoryName(configFile);
-					if(folder != null) {
-						File.Copy(configFile, Path.Combine(folder, "settings." + DateTime.Now.ToString("yyyy-M-dd_HH-mm-ss") + ".bak"), true);
-					}
+					BackupSettings(configFile);
 				} catch { }
 
 				config = Configuration.CreateConfig();
@@ -218,10 +268,19 @@ namespace Mesen.Config
 			return config;
 		}
 
+		public static void BackupSettings(string configFile)
+		{
+			//File exists but couldn't be loaded, make a backup of the old settings before we overwrite them
+			string? folder = Path.GetDirectoryName(configFile);
+			if(folder != null) {
+				File.Copy(configFile, Path.Combine(folder, "settings." + DateTime.Now.ToString("yyyy-M-dd_HH-mm-ss") + ".bak"), true);
+			}
+		}
+
 		public void Serialize(string configFile)
 		{
 			try {
-				string cfgData = JsonSerializer.Serialize(this, typeof(Configuration), JsonHelper.Options);
+				string cfgData = JsonSerializer.Serialize(this, typeof(Configuration), MesenSerializerContext.Default);
 				if(_fileData != cfgData && !Design.IsDesignMode) {
 					FileHelper.WriteAllText(configFile, cfgData);
 					_fileData = cfgData;
@@ -257,6 +316,9 @@ namespace Mesen.Config
 		Uninitialized = 0,
 		FirstRun,
 		SmsInput,
+		GbaInput,
+		CvInput,
+		WsInput,
 		NextValue,
 	}
 }

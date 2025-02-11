@@ -10,29 +10,15 @@ using Mesen.Interop;
 using System.Collections.Generic;
 using Avalonia.Input;
 using Mesen.Utilities;
+using System.Runtime.CompilerServices;
 
 namespace Mesen.Windows
 {
 	public class AboutWindow : MesenWindow
 	{
-		public class AboutListEntry
-		{
-			public AboutListEntry(string name, string author, string note, string url)
-			{
-				Name = name;
-				Author = author;
-				Note = note;
-				Url = url;
-			}
-
-			public string Name { get; set; } = "";
-			public string Author { get; set; } = "";
-			public string Note { get; set; } = "";
-			public string Url { get; set; } = "";
-		}
-
 		public string Version { get; }
 		public string BuildDate { get; }
+		public string RuntimeVersion { get; }
 		public List<AboutListEntry> LibraryList { get; }
 		public List<AboutListEntry> AcknowledgeList { get; }
 
@@ -40,6 +26,8 @@ namespace Mesen.Windows
 		{
 			Version = EmuApi.GetMesenVersion().ToString();
 			BuildDate = EmuApi.GetMesenBuildDate();
+			RuntimeVersion = ".NET " + Environment.Version;
+			RuntimeVersion += RuntimeFeature.IsDynamicCodeSupported ? " (JIT)" : " (AOT)";
 
 			LibraryList = new List<AboutListEntry>() {
 				new("Avalonia", "", "MIT", "https://github.com/AvaloniaUI/Avalonia"),
@@ -72,7 +60,10 @@ namespace Mesen.Windows
 				new("ZMBV Codec (DOSBox)", "", "GPL2+", "https://www.dosbox.com/"),
 				new("CSCD Codec (lsnes)", "", "GPL2+", "https://repo.or.cz/lsnes.git"),
 				new("kissfft", "", "BSD 3-clause", "https://github.com/mborgerding/kissfft"),
-				new("orfanidis_eq", "", "MIT", "https://github.com/thedrgreenthumb/orfanidis_eq")
+				new("orfanidis_eq", "", "MIT", "https://github.com/thedrgreenthumb/orfanidis_eq"),
+				new("ELFSharp", "", "MIT", "https://github.com/konrad-kruczynski/elfsharp"),
+				new("ymfm", "", "BSD 3-clause", "https://github.com/aaronsgiles/ymfm"),
+				new("GBA Multiply Algo (zaydlang)", "", "zlib", "https://github.com/zaydlang/multiplication-algorithm/"),
 			};
 
 			LibraryList.Sort((a, b) => a.Name.CompareTo(b.Name));
@@ -89,7 +80,7 @@ namespace Mesen.Windows
 
 			InitializeComponent();
 
-			this.GetControl<TextBlock>("lblCopyright").Text = $"© 2014-{DateTime.Now.Year} Sour";
+			this.GetControl<TextBlock>("lblCopyright").Text = $"Copyright 2014-{DateTime.Now.Year} Sour";
 		}
 
 		private void InitializeComponent()
@@ -113,5 +104,21 @@ namespace Mesen.Windows
 		{
 			ApplicationHelper.OpenBrowser("https://www.mesen.ca");
 		}
+	}
+
+	public class AboutListEntry
+	{
+		public AboutListEntry(string name, string author, string note, string url)
+		{
+			Name = name;
+			Author = author;
+			Note = note;
+			Url = url;
+		}
+
+		public string Name { get; set; } = "";
+		public string Author { get; set; } = "";
+		public string Note { get; set; } = "";
+		public string Url { get; set; } = "";
 	}
 }

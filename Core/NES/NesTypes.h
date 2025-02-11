@@ -22,7 +22,8 @@ enum class NesAddrMode
 	None, Acc, Imp, Imm, Rel,
 	Zero, Abs, ZeroX, ZeroY,
 	Ind, IndX, IndY, IndYW,
-	AbsX, AbsXW, AbsY, AbsYW
+	AbsX, AbsXW, AbsY, AbsYW,
+	Other
 };
 
 enum class IRQSource
@@ -31,6 +32,7 @@ enum class IRQSource
 	FrameCounter = 2,
 	DMC = 4,
 	FdsDisk = 8,
+	Epsm = 16
 };
 
 enum class MemoryOperation
@@ -58,6 +60,7 @@ enum class PrgMemoryType
 	PrgRom,
 	SaveRam,
 	WorkRam,
+	MapperRam,
 };
 
 enum class ChrMemoryType
@@ -65,7 +68,8 @@ enum class ChrMemoryType
 	Default,
 	ChrRom,
 	ChrRam,
-	NametableRam
+	NametableRam,
+	MapperRam,
 };
 
 enum MemoryAccessType
@@ -164,7 +168,7 @@ struct CartridgeState
 	bool HasBattery = false;
 
 	uint32_t CustomEntryCount = 0;
-	MapperStateEntry CustomEntries[100] = {};
+	MapperStateEntry CustomEntries[200] = {};
 };
 
 struct PPUStatusFlags

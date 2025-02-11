@@ -22,10 +22,13 @@ namespace Mesen.Interop
 		[DllImport(DllPath)] public static extern void SetEmulationConfig(InteropEmulationConfig config);
 		
 		[DllImport(DllPath)] public static extern void SetGameboyConfig(InteropGameboyConfig config);
+		[DllImport(DllPath)] public static extern void SetGbaConfig(InteropGbaConfig config);
 		[DllImport(DllPath)] public static extern void SetPcEngineConfig(InteropPcEngineConfig config);
 		[DllImport(DllPath)] public static extern void SetNesConfig(InteropNesConfig config);
 		[DllImport(DllPath)] public static extern void SetSnesConfig(InteropSnesConfig config);
 		[DllImport(DllPath)] public static extern void SetSmsConfig(InteropSmsConfig config);
+		[DllImport(DllPath)] public static extern void SetCvConfig(InteropCvConfig config);
+		[DllImport(DllPath)] public static extern void SetWsConfig(InteropWsConfig config);
 
 		[DllImport(DllPath)] public static extern void SetGameConfig(InteropGameConfig config);
 
@@ -64,10 +67,13 @@ namespace Mesen.Interop
 		GsuDebuggerEnabled = (1 << 3),
 		NecDspDebuggerEnabled = (1 << 4),
 		Cx4DebuggerEnabled = (1 << 5),
-		GbDebuggerEnabled = (1 << 6),
-		NesDebuggerEnabled = (1 << 7),
-		PceDebuggerEnabled = (1 << 8),
-		SmsDebuggerEnabled = (1 << 9),
+		St018DebuggerEnabled = (1 << 6),
+		GbDebuggerEnabled = (1 << 7),
+		NesDebuggerEnabled = (1 << 8),
+		PceDebuggerEnabled = (1 << 9),
+		SmsDebuggerEnabled = (1 << 10),
+		GbaDebuggerEnabled = (1 << 11),
+		WsDebuggerEnabled = (1 << 12),
 	}
 
 	public struct InteropShortcutKeyInfo

@@ -300,7 +300,7 @@ void PceVpc::SendFrame(PceVdc* vdc)
 		}
 	}
 
-	_console->GetPsg()->Run();
+	_console->ProcessEndOfFrame();
 	_emu->ProcessEndOfFrame();
 
 	_console->GetControlManager()->UpdateInputState();

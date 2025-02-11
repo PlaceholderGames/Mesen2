@@ -60,7 +60,7 @@ void NesMemoryManager::InitializeMemoryHandlers(INesMemoryHandler** memoryHandle
 {
 	for(uint16_t address : *addresses) {
 		if(!allowOverride && memoryHandlers[address] != &_openBusHandler && memoryHandlers[address] != handler) {
-			throw std::runtime_error("Not supported");
+			throw std::runtime_error("Can't override existing mapping");
 		}
 		memoryHandlers[address] = handler;
 	}
@@ -77,8 +77,15 @@ void NesMemoryManager::RegisterIODevice(INesMemoryHandler*handler)
 
 void NesMemoryManager::RegisterWriteHandler(INesMemoryHandler* handler, uint32_t start, uint32_t end)
 {
-	for(uint32_t i = start; i < end; i++) {
+	for(uint32_t i = start; i <= end; i++) {
 		_ramWriteHandlers[i] = handler;
+	}
+}
+
+void NesMemoryManager::RegisterReadHandler(INesMemoryHandler* handler, uint32_t start, uint32_t end)
+{
+	for(uint32_t i = start; i <= end; i++) {
+		_ramReadHandlers[i] = handler;
 	}
 }
 
@@ -123,7 +130,7 @@ uint8_t NesMemoryManager::Read(uint16_t addr, MemoryOperationType operationType)
 	}
 	_emu->ProcessMemoryRead<CpuType::Nes>(addr, value, operationType);
 
-	_openBusHandler.SetOpenBus(value);
+	_openBusHandler.SetOpenBus(value, addr == 0x4015);
 
 	return value;
 }
@@ -132,7 +139,7 @@ void NesMemoryManager::Write(uint16_t addr, uint8_t value, MemoryOperationType o
 {
 	if(_emu->ProcessMemoryWrite<CpuType::Nes>(addr, value, operationType)) {
 		_ramWriteHandlers[addr]->WriteRam(addr, value);
-		_openBusHandler.SetOpenBus(value);
+		_openBusHandler.SetOpenBus(value, false);
 	}
 }
 
@@ -158,9 +165,15 @@ void NesMemoryManager::DebugWrite(uint16_t addr, uint8_t value, bool disableSide
 void NesMemoryManager::Serialize(Serializer &s)
 {
 	SVArray(_internalRam, _internalRamSize);
+	SV(_openBusHandler);
 }
 
 uint8_t NesMemoryManager::GetOpenBus(uint8_t mask)
 {
 	return _openBusHandler.GetOpenBus() & mask;
+}
+
+uint8_t NesMemoryManager::GetInternalOpenBus(uint8_t mask)
+{
+	return _openBusHandler.GetInternalOpenBus() & mask;
 }

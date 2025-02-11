@@ -36,6 +36,11 @@ extern "C" {
 		_emu->GetSettings()->SetGameboyConfig(config);
 	}
 
+	DllExport void __stdcall SetGbaConfig(GbaConfig config)
+	{
+		_emu->GetSettings()->SetGbaConfig(config);
+	}
+
 	DllExport void __stdcall SetPcEngineConfig(PcEngineConfig config)
 	{
 		_emu->GetSettings()->SetPcEngineConfig(config);
@@ -54,6 +59,16 @@ extern "C" {
 	DllExport void __stdcall SetSmsConfig(SmsConfig config)
 	{
 		_emu->GetSettings()->SetSmsConfig(config);
+	}
+
+	DllExport void __stdcall SetCvConfig(CvConfig config)
+	{
+		_emu->GetSettings()->SetCvConfig(config);
+	}
+
+	DllExport void __stdcall SetWsConfig(WsConfig config)
+	{
+		_emu->GetSettings()->SetWsConfig(config);
 	}
 
 	DllExport void __stdcall SetGameConfig(GameConfig config)

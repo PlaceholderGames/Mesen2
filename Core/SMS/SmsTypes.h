@@ -6,7 +6,9 @@
 enum class SmsModel
 {
 	Sms,
-	GameGear
+	GameGear,
+	Sg,
+	ColecoVision
 };
 
 struct SmsCpuState : public BaseState
@@ -104,6 +106,7 @@ struct SmsVdpState : public BaseState
 	uint16_t NametableHeight;
 	uint8_t VisibleScanlineCount;
 
+	uint8_t TextColorIndex;
 	uint8_t BackgroundColorIndex;
 	uint8_t HorizontalScroll;
 	uint8_t HorizontalScrollLatch;
@@ -176,6 +179,10 @@ struct SmsMemoryManagerState
 	bool IsWriteRegister[0x100];
 
 	uint8_t OpenBus;
+	uint8_t GgExtData;
+	uint8_t GgExtConfig;
+	uint8_t GgSendData;
+	uint8_t GgSerialConfig;
 
 	bool ExpEnabled;
 	bool CartridgeEnabled;
@@ -190,7 +197,7 @@ struct SmsControlManagerState
 	uint8_t ControlPort;
 };
 
-struct SmsState : public BaseState
+struct SmsState
 {
 	SmsCpuState Cpu;
 	SmsVdpState Vdp;

@@ -1,4 +1,5 @@
-﻿using Mesen.Interop;
+﻿using Mesen.Debugger.Utilities;
+using Mesen.Interop;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -64,7 +65,9 @@ namespace Mesen.Debugger
 
 		public static void RemoveBreakpoint(Breakpoint bp)
 		{
-			_breakpoints.Remove(bp);
+			if(_breakpoints.Remove(bp)) {
+				DebugWorkspaceManager.AutoSave();
+			}
 			RefreshBreakpoints(bp);
 		}
 
@@ -80,6 +83,7 @@ namespace Mesen.Debugger
 		{
 			if(!_breakpoints.Contains(bp)) {
 				_breakpoints.Add(bp);
+				DebugWorkspaceManager.AutoSave();
 			}
 			RefreshBreakpoints(bp);
 		}
@@ -115,9 +119,9 @@ namespace Mesen.Debugger
 			}
 		}
 
-		public static Breakpoint? GetMatchingBreakpoint(AddressInfo info, CpuType cpuType, bool ignoreRangedRwBp = false)
+		private static Breakpoint? GetMatchingBreakpoint(AddressInfo info, CpuType cpuType, Func<Breakpoint, bool> predicate)
 		{
-			Breakpoint? bp = Breakpoints.Where((bp) => (!ignoreRangedRwBp || bp.IsSingleAddress || bp.BreakOnExec) && bp.Matches((UInt32)info.Address, info.Type, cpuType)).FirstOrDefault();
+			Breakpoint? bp = Breakpoints.Where((bp) => predicate(bp) && bp.Matches((UInt32)info.Address, info.Type, cpuType)).FirstOrDefault();
 
 			if(bp == null) {
 				AddressInfo altAddr;
@@ -128,16 +132,25 @@ namespace Mesen.Debugger
 				}
 
 				if(altAddr.Address >= 0) {
-					bp = Breakpoints.Where((bp) => (!ignoreRangedRwBp || bp.IsSingleAddress || bp.BreakOnExec) && bp.Matches((UInt32)altAddr.Address, altAddr.Type, cpuType)).FirstOrDefault();
+					bp = Breakpoints.Where((bp) => predicate(bp) && bp.Matches((UInt32)altAddr.Address, altAddr.Type, cpuType)).FirstOrDefault();
 				}
 			}
 
 			return bp;
 		}
 
+		public static Breakpoint? GetMatchingBreakpoint(AddressInfo info, CpuType cpuType, bool ignoreRangedRwBp = false)
+		{
+			return GetMatchingBreakpoint(info, cpuType, (bp) => !ignoreRangedRwBp || bp.IsSingleAddress || bp.BreakOnExec);
+		}
+
+		public static Breakpoint? GetMatchingForbidBreakpoint(AddressInfo info, CpuType cpuType)
+		{
+			return GetMatchingBreakpoint(info, cpuType, (bp) => bp.Forbid);
+		}
+
 		public static Breakpoint? GetMatchingBreakpoint(UInt32 startAddress, UInt32 endAddress, MemoryType memoryType)
 		{
-			bool isAddressRange = startAddress != endAddress;
 			return Breakpoints.Where((bp) =>
 					bp.MemoryType == memoryType &&
 					bp.StartAddress == startAddress && bp.EndAddress == endAddress
@@ -149,23 +162,24 @@ namespace Mesen.Debugger
 			Breakpoint? breakpoint = BreakpointManager.GetMatchingBreakpoint(info, cpuType);
 			if(breakpoint != null) {
 				breakpoint.Enabled = !breakpoint.Enabled;
+				DebugWorkspaceManager.AutoSave();
 				RefreshBreakpoints();
 				return true;
 			}
 			return false;
 		}
 
-		public static void ToggleBreakpoint(AddressInfo info, CpuType cpuType, bool forceExecBreakpoint = true)
+		public static void ToggleBreakpoint(AddressInfo info, CpuType cpuType)
 		{
 			if(info.Address < 0) {
 				return;
 			}
 
-			Breakpoint? breakpoint = BreakpointManager.GetMatchingBreakpoint(info, cpuType, forceExecBreakpoint);
+			Breakpoint? breakpoint = BreakpointManager.GetMatchingForbidBreakpoint(info, cpuType) ?? BreakpointManager.GetMatchingBreakpoint(info, cpuType, true);
 			if(breakpoint != null) {
 				BreakpointManager.RemoveBreakpoint(breakpoint);
 			} else {
-				bool execBreakpoint = forceExecBreakpoint || info.Type.IsRomMemory();
+				bool execBreakpoint = true;
 				bool readWriteBreakpoint = !info.Type.IsRomMemory() || info.Type.IsRelativeMemory();
 				if(info.Type.SupportsCdl()) {
 					CdlFlags cdlData = DebugApi.GetCdlData((uint)info.Address, 1, info.Type)[0];
@@ -192,16 +206,40 @@ namespace Mesen.Debugger
 			}
 		}
 
+		public static void ToggleForbidBreakpoint(AddressInfo addr, CpuType cpuType)
+		{
+			if(addr.Address < 0) {
+				return;
+			}
+
+			Breakpoint? breakpoint = GetMatchingForbidBreakpoint(addr, cpuType);
+			if(breakpoint != null) {
+				BreakpointManager.RemoveBreakpoint(breakpoint);
+			} else {
+				breakpoint = new Breakpoint() {
+					CpuType = cpuType,
+					Enabled = true,
+					Forbid = true,
+					StartAddress = (UInt32)addr.Address,
+					EndAddress = (UInt32)addr.Address
+				};
+				breakpoint.MemoryType = addr.Type;
+				BreakpointManager.AddBreakpoint(breakpoint);
+			}
+		}
+
 		public static void SetBreakpoints()
 		{
 			List<InteropBreakpoint> breakpoints = new List<InteropBreakpoint>();
 
+			int id = 0;
 			void toInteropBreakpoints(IEnumerable<Breakpoint> bpList)
 			{
 				foreach(Breakpoint bp in bpList) {
 					if(_activeCpuTypes.Contains(bp.CpuType)) {
-						breakpoints.Add(bp.ToInteropBreakpoint(breakpoints.Count));
+						breakpoints.Add(bp.ToInteropBreakpoint(id));
 					}
+					id++;
 				}
 			}
 
@@ -220,6 +258,8 @@ namespace Mesen.Debugger
 				return _breakpoints[breakpointId];
 			} else if(breakpointId < _breakpoints.Count + Asserts.Count) {
 				return Asserts[breakpointId - _breakpoints.Count];
+			} else if(breakpointId < _breakpoints.Count + Asserts.Count + _temporaryBreakpoints.Count) {
+				return _temporaryBreakpoints[breakpointId - _breakpoints.Count - Asserts.Count];
 			}
 			return null;
 		}

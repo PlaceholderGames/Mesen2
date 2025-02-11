@@ -62,7 +62,7 @@ PceDebugger::PceDebugger(Debugger* debugger) : IDebugger(debugger->GetEmulator()
 
 	_stepBackManager.reset(new StepBackManager(_emu, this));
 	_eventManager.reset(new PceEventManager(debugger, console));
-	_callstackManager.reset(new CallstackManager(debugger, console));
+	_callstackManager.reset(new CallstackManager(debugger, this));
 	_breakpointManager.reset(new BreakpointManager(debugger, this, CpuType::Pce, _eventManager.get()));
 	_step.reset(new StepRequest());
 	_assembler.reset(new PceAssembler(_debugger->GetLabelManager()));
@@ -79,7 +79,7 @@ void PceDebugger::Reset()
 	ResetPrevOpCode();
 }
 
-uint64_t PceDebugger::GetCpuCycleCount()
+uint64_t PceDebugger::GetCpuCycleCount(bool forProfiler)
 {
 	return _cpu->GetState().CycleCount;
 }
@@ -109,10 +109,11 @@ void PceDebugger::ProcessInstruction()
 		}
 	}
 
-	ProcessCallStackUpdates(addressInfo, pc);
+	ProcessCallStackUpdates(addressInfo, pc, state.SP);
 
 	_prevOpCode = opCode;
 	_prevProgramCounter = pc;
+	_prevStackPointer = state.SP;
 
 	_step->ProcessCpuExec();
 
@@ -230,10 +231,15 @@ void PceDebugger::Step(int32_t stepCount, StepType type)
 	StepRequest step(type);
 	switch(type) {
 		case StepType::Step: step.StepCount = stepCount; break;
-		case StepType::StepOut: step.BreakAddress = _callstackManager->GetReturnAddress(); break;
+		case StepType::StepOut:
+			step.BreakAddress = _callstackManager->GetReturnAddress();
+			step.BreakStackPointer = _callstackManager->GetReturnStackPointer();
+			break;
+
 		case StepType::StepOver:
 			if(PceDisUtils::IsJumpToSub(_prevOpCode)) {
 				step.BreakAddress = (_prevProgramCounter + PceDisUtils::GetOpSize(_prevOpCode)) & 0xFFFF;
+				step.BreakStackPointer = _prevStackPointer;
 			} else {
 				//For any other instruction, step over is the same as step into
 				step.StepCount = 1;
@@ -249,12 +255,21 @@ void PceDebugger::Step(int32_t stepCount, StepType type)
 	_step.reset(new StepRequest(step));
 }
 
+StepBackConfig PceDebugger::GetStepBackConfig()
+{
+	return {
+		_memoryManager->GetState().CycleCount,
+		PceConstants::ClockPerScanline,
+		PceConstants::ClockPerScanline * _vce->GetScanlineCount()
+	};
+}
+
 void PceDebugger::DrawPartialFrame()
 {
 	_vpc->DebugSendFrame();
 }
 
-void PceDebugger::ProcessCallStackUpdates(AddressInfo& destAddr, uint16_t destPc)
+void PceDebugger::ProcessCallStackUpdates(AddressInfo& destAddr, uint16_t destPc, uint8_t sp)
 {
 	if(PceDisUtils::IsJumpToSub(_prevOpCode)) {
 		//JSR
@@ -262,12 +277,12 @@ void PceDebugger::ProcessCallStackUpdates(AddressInfo& destAddr, uint16_t destPc
 		uint32_t returnPc = (_prevProgramCounter + opSize) & 0xFFFF;
 		AddressInfo srcAddress = _memoryManager->GetAbsoluteAddress(_prevProgramCounter);
 		AddressInfo retAddress = _memoryManager->GetAbsoluteAddress(returnPc);
-		_callstackManager->Push(srcAddress, _prevProgramCounter, destAddr, destPc, retAddress, returnPc, StackFrameFlags::None);
+		_callstackManager->Push(srcAddress, _prevProgramCounter, destAddr, destPc, retAddress, returnPc, _prevStackPointer, StackFrameFlags::None);
 	} else if(PceDisUtils::IsReturnInstruction(_prevOpCode)) {
 		//RTS, RTI
-		_callstackManager->Pop(destAddr, destPc);
+		_callstackManager->Pop(destAddr, destPc, sp);
 
-		if(_step->BreakAddress == (int32_t)destPc) {
+		if(_step->BreakAddress == (int32_t)destPc && _step->BreakStackPointer == sp) {
 			//RTS/RTI found, if we're on the expected return address, break immediately (for step over/step out)
 			_step->Break(BreakSource::CpuStep);
 		}
@@ -276,7 +291,6 @@ void PceDebugger::ProcessCallStackUpdates(AddressInfo& destAddr, uint16_t destPc
 
 void PceDebugger::ProcessInterrupt(uint32_t originalPc, uint32_t currentPc, bool forNmi)
 {
-	AddressInfo src = _memoryManager->GetAbsoluteAddress(_prevProgramCounter);
 	AddressInfo ret = _memoryManager->GetAbsoluteAddress(originalPc);
 	AddressInfo dest = _memoryManager->GetAbsoluteAddress(currentPc);
 	
@@ -284,13 +298,16 @@ void PceDebugger::ProcessInterrupt(uint32_t originalPc, uint32_t currentPc, bool
 		_codeDataLogger->SetCode(dest.Address, CdlFlags::SubEntryPoint);
 	}
 
+	uint8_t originalSp = _cpu->GetState().SP + 3;
+	_prevStackPointer = originalSp;
+
 	//If a call/return occurred just before IRQ, it needs to be processed now
-	ProcessCallStackUpdates(ret, originalPc);
+	ProcessCallStackUpdates(ret, originalPc, originalSp);
 	ResetPrevOpCode();
 
 	_debugger->InternalProcessInterrupt(
 		CpuType::Pce, *this, *_step.get(),
-		src, _prevProgramCounter, dest, currentPc, ret, originalPc, forNmi
+		ret, originalPc, dest, currentPc, ret, originalPc, originalSp, forNmi
 	);
 }
 
@@ -364,6 +381,7 @@ void PceDebugger::SetProgramCounter(uint32_t addr, bool updateDebuggerOnly)
 	}
 	_prevOpCode = _memoryManager->DebugRead(addr);
 	_prevProgramCounter = (uint16_t)addr;
+	_prevStackPointer = _cpu->GetState().SP;
 }
 
 uint32_t PceDebugger::GetProgramCounter(bool getInstPc)

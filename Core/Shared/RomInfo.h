@@ -27,6 +27,11 @@ enum class RomFormat
 	Sms,
 	GameGear,
 	Sg,
+	ColecoVision,
+
+	Gba,
+
+	Ws,
 };
 
 struct DipSwitchInfo

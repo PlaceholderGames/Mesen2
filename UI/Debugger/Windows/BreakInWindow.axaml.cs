@@ -4,6 +4,7 @@ using Avalonia.Interactivity;
 using Avalonia.Markup.Xaml;
 using Mesen.Controls;
 using Mesen.Interop;
+using Mesen.Utilities;
 using ReactiveUI.Fody.Helpers;
 using System;
 
@@ -14,7 +15,7 @@ namespace Mesen.Debugger.Windows
 		public static int _lastValue { get; set; } = 0;
 		public static StepType _lastStepType { get; set; } = StepType.Step;
 		
-		public static readonly StyledProperty<int> ValueProperty = AvaloniaProperty.Register<BreakInWindow, int>(nameof(Value));
+		public static readonly StyledProperty<int> ValueProperty = AvaloniaProperty.Register<BreakInWindow, int>(nameof(Value), defaultBindingMode: Avalonia.Data.BindingMode.TwoWay);
 		public static readonly StyledProperty<StepType> StepTypeProperty = AvaloniaProperty.Register<BreakInWindow, StepType>(nameof(StepType));
 
 		public int Value
@@ -63,7 +64,7 @@ namespace Mesen.Debugger.Windows
 		protected override void OnOpened(EventArgs e)
 		{
 			base.OnOpened(e);
-			this.GetControl<MesenNumericTextBox>("txtValue").Focus();
+			this.GetControl<MesenNumericTextBox>("txtValue").FocusAndSelectAll();
 		}
 
 		private void Ok_OnClick(object sender, RoutedEventArgs e)

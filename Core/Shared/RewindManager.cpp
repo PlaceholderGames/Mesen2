@@ -43,7 +43,6 @@ void RewindManager::Reset()
 void RewindManager::ClearBuffer()
 {
 	_hasHistory = false;
-	_ignoreLoadState = false;
 	_history.clear();
 	_historyBackup.clear();
 	_framesToFastForward = 0;
@@ -75,7 +74,7 @@ void RewindManager::ProcessNotification(ConsoleNotificationType type, void * par
 					_framesToFastForward--;
 					_currentHistory.FrameCount++;
 					if(_framesToFastForward == 0) {
-						for(int i = 0; i < 4; i++) {
+						for(int i = 0; i < BaseControlDevice::PortCount; i++) {
 							size_t numberToRemove = _currentHistory.InputLogs[i].size();
 							_currentHistory.InputLogs[i] = _historyBackup.front().InputLogs[i];
 							for(size_t j = 0; j < numberToRemove; j++) {
@@ -97,7 +96,7 @@ void RewindManager::ProcessNotification(ConsoleNotificationType type, void * par
 			ClearBuffer();
 		}
 	} else if(type == ConsoleNotificationType::StateLoaded) {
-		if(_rewindState == RewindState::Stopped && !_ignoreLoadState) {
+		if(_rewindState == RewindState::Stopped) {
 			//A save state was loaded by the user, mark as the end of the current "segment" (for history viewer)
 			_currentHistory.EndOfSegment = true;
 			AddHistoryBlock();
@@ -158,8 +157,16 @@ void RewindManager::PopHistory()
 			_history.pop_back();
 		}
 
+		if(IsStepBack() && _currentHistory.FrameCount <= 1 && !_history.empty() && !_history.back().EndOfSegment) {
+			//Go back an extra frame to ensure step back works across 30-frame chunks
+			_historyBackup.push_front(_currentHistory);
+			_currentHistory = _history.back();
+			_history.pop_back();
+		}
+
 		_historyBackup.push_front(_currentHistory);
-		_currentHistory.LoadState(_emu, _history);
+		_currentHistory.LoadState(_emu, _history, -1, false);
+
 		if(!_audioHistoryBuilder.empty()) {
 			_audioHistory.insert(_audioHistory.begin(), _audioHistoryBuilder.begin(), _audioHistoryBuilder.end());
 			_audioHistoryBuilder.clear();
@@ -181,6 +188,11 @@ void RewindManager::Start(bool forDebugger)
 
 void RewindManager::InternalStart(bool forDebugger)
 {
+	if(_history.empty() && _currentHistory.FrameCount <= 0 && !forDebugger) {
+		//No data in history, can't rewind
+		return;
+	}
+
 	_rewindState = forDebugger ? RewindState::Debugging : RewindState::Starting;
 	_videoHistoryBuilder.clear();
 	_videoHistory.clear();
@@ -194,15 +206,43 @@ void RewindManager::InternalStart(bool forDebugger)
 	_settings->SetFlag(EmulationFlags::Rewind);
 }
 
-void RewindManager::ForceStop()
+void RewindManager::ForceStop(bool deleteFutureData)
 {
 	if(_rewindState != RewindState::Stopped) {
-		while(_historyBackup.size() > 1) {
-			_history.push_back(_historyBackup.front());
-			_historyBackup.pop_front();
+		if(deleteFutureData) {
+			//Step back reached its target - delete any future "history" beyond this
+			//Otherwise, subsequent step back/rewind operations won't work properly
+			RewindData orgHistory = _currentHistory;
+			int framesToRemove = _currentHistory.FrameCount;
+			if(!_historyBackup.empty()) {
+				_currentHistory = _historyBackup.front();
+				_currentHistory.FrameCount -= framesToRemove;
+				for(int i = 0; i < BaseControlDevice::PortCount; i++) {
+					for(int j = 0; j < orgHistory.InputLogs[i].size(); j++) {
+						if(!_currentHistory.InputLogs[i].empty()) {
+							_currentHistory.InputLogs[i].pop_back();
+						}
+					}
+				}
+			}
+			_historyBackup.clear();
+
+			if(!_videoHistory.empty()) {
+				//Update the frame on the screen to match the last frame generated during step back
+				//Needed to update the screen when stepping back to the previous frame
+				VideoFrame& frameData = _videoHistory.back();
+				RenderedFrame oldFrame(frameData.Data.data(), frameData.Width, frameData.Height, frameData.Scale, frameData.FrameNumber, frameData.InputData);
+				_emu->GetVideoRenderer()->UpdateFrame(oldFrame);
+			}
+		} else {
+			while(_historyBackup.size() > 1) {
+				_history.push_back(_historyBackup.front());
+				_historyBackup.pop_front();
+			}
+			_currentHistory = _historyBackup.front();
+			_historyBackup.clear();
 		}
-		_currentHistory = _historyBackup.front();
-		_historyBackup.clear();
+
 		_rewindState = RewindState::Stopped;
 		_settings->ClearFlag(EmulationFlags::MaximumSpeed);
 		_settings->ClearFlag(EmulationFlags::Rewind);
@@ -263,6 +303,14 @@ void RewindManager::ProcessEndOfFrame()
 			//If we're debugging, we want to keep running the emulation to the end of the next frame (even if it's incomplete)
 			//Otherwise the emulation might diverge due to missing inputs.
 			PopHistory();
+		} else if(_currentHistory.FrameCount == 0 && _rewindState == RewindState::Debugging) {
+			//Reached the end of the current 30-frame block, move to the next,
+			//the step back target cycle could be at the start of the next block
+			if(_historyBackup.size() > 1) {
+				_history.push_back(_historyBackup.front());
+				_historyBackup.pop_front();
+				_currentHistory = _historyBackup.front();
+			}
 		}
 	} else if(_currentHistory.FrameCount >= RewindManager::BufferSize) {
 		AddHistoryBlock();
@@ -305,8 +353,19 @@ void RewindManager::ProcessFrame(RenderedFrame& frame, bool forRewind)
 				_videoHistory.pop_back();
 			}
 		}
-	} else if(_rewindState == RewindState::Stopping || _rewindState == RewindState::Debugging) {
+	} else if(_rewindState == RewindState::Stopping) {
 		//Display nothing while resyncing
+	} else if(_rewindState == RewindState::Debugging) {
+		//Keep the last frame to be able to display it once step back reaches its target
+		VideoFrame newFrame;
+		newFrame.Data = vector<uint32_t>((uint32_t*)frame.FrameBuffer, (uint32_t*)frame.FrameBuffer + frame.Width * frame.Height);
+		newFrame.Width = frame.Width;
+		newFrame.Height = frame.Height;
+		newFrame.Scale = frame.Scale;
+		newFrame.FrameNumber = frame.FrameNumber;
+		newFrame.InputData = frame.InputData;
+		_videoHistory.clear();
+		_videoHistory.push_back(newFrame);
 	} else {
 		_emu->GetVideoRenderer()->UpdateFrame(frame);
 	}
@@ -348,11 +407,15 @@ void RewindManager::RecordInput(vector<shared_ptr<BaseControlDevice>> devices)
 bool RewindManager::SetInput(BaseControlDevice *device)
 {
 	uint8_t port = device->GetPort();
-	if(!_currentHistory.InputLogs[port].empty() && IsRewinding()) {
-		ControlDeviceState state = _currentHistory.InputLogs[port].front();
-		_currentHistory.InputLogs[port].pop_front();
-		device->SetRawState(state);
-		return true;
+	if(IsRewinding()) {
+		if(!_currentHistory.InputLogs[port].empty()) {
+			ControlDeviceState state = _currentHistory.InputLogs[port].front();
+			_currentHistory.InputLogs[port].pop_front();
+			device->SetRawState(state);
+			return true;
+		} else {
+			return false;
+		}
 	} else {
 		return false;
 	}
@@ -363,10 +426,10 @@ void RewindManager::StartRewinding(bool forDebugger)
 	Start(forDebugger);
 }
 
-void RewindManager::StopRewinding(bool forDebugger)
+void RewindManager::StopRewinding(bool forDebugger, bool deleteFutureData)
 {
 	if(forDebugger) {
-		ForceStop();
+		ForceStop(deleteFutureData);
 	} else {
 		Stop();
 	}
@@ -420,9 +483,4 @@ void RewindManager::SendFrame(RenderedFrame& frame, bool forRewind)
 bool RewindManager::SendAudio(int16_t* soundBuffer, uint32_t sampleCount)
 {
 	return ProcessAudio(soundBuffer, sampleCount);
-}
-
-void RewindManager::SetIgnoreLoadState(bool ignore)
-{
-	_ignoreLoadState = ignore;
 }

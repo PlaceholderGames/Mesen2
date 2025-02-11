@@ -70,12 +70,12 @@ namespace Mesen.Debugger.ViewModels
 			}
 
 			QuickSearch.OnFind += QuickSearch_OnFind;
-			
-			this.WhenAnyValue(x => x.QuickSearch.IsSearchBoxVisible).Subscribe(x => {
+
+			AddDisposable(this.WhenAnyValue(x => x.QuickSearch.IsSearchBoxVisible).Subscribe(x => {
 				if(!QuickSearch.IsSearchBoxVisible) {
 					_viewer?.Focus();
 				}
-			});
+			}));
 
 			UpdateAvailableTabs();
 
@@ -469,6 +469,11 @@ namespace Mesen.Debugger.ViewModels
 			AddDisposable(ReactiveHelper.RegisterRecursiveObserver(options, OnOptionsChanged));
 			UpdateFormat();
 
+			if(string.IsNullOrWhiteSpace(Options.Format)) {
+				//Set custom format to the default if it's empty
+				Options.Format = GetAutoFormat(Options, CpuType);
+			}
+
 			TabName = ResourceHelper.GetEnumText(cpuType);
 			LogOptionsTitle = string.Format(ResourceHelper.GetViewLabel(nameof(TraceLoggerWindow), "grpLogOptions"), ResourceHelper.GetEnumText(cpuType));
 		}
@@ -477,7 +482,8 @@ namespace Mesen.Debugger.ViewModels
 		{
 			UpdateFormat();
 
-			if(Options.UseCustomFormat && string.IsNullOrWhiteSpace(Options.Format)) {
+			if(e.PropertyName == nameof(TraceLoggerCpuConfig.UseCustomFormat) && Options.UseCustomFormat && string.IsNullOrWhiteSpace(Options.Format)) {
+				//Set custom format to the default if it's empty
 				Options.Format = Format;
 			}
 
@@ -505,12 +511,12 @@ namespace Mesen.Debugger.ViewModels
 
 		public static string GetAutoFormat(TraceLoggerCpuConfig cfg, CpuType cpuType)
 		{
-			if(cfg.UseCustomFormat) {
-				return "";
-			}
-
 			string format = "";
-			int alignValue = 24;
+			int alignValue = cpuType switch {
+				CpuType.Gba => 42,
+				CpuType.Ws => 36,
+				_ => 24
+			};
 
 			void addTag(bool condition, string formatText, int align = 0)
 			{
@@ -588,6 +594,26 @@ namespace Mesen.Debugger.ViewModels
 					});
 					addTag(cfg.ShowRegisters, "HL:[H,2h][L,2h] IX:[IX,4h] IY:[IY,4h] S:[SP,4h] ");
 					break;
+
+				case CpuType.St018:
+				case CpuType.Gba:
+					addTag(cfg.ShowRegisters, "R0:[R0,8h] R1:[R1,8h] R2:[R2,8h] R3:[R3,8h] R4:[R4,8h] R5:[R5,8h] R6:[R6,8h] R7:[R7,8h] R8:[R8,8h] R9:[R9,8h] R10:[R10,8h] R11:[R11,8h] R12:[R12,8h] R13:[R13,8h] R14:[R14,8h] R15:[R15,8h] ");
+					addTag(cfg.ShowStatusFlags, cfg.StatusFormat switch {
+						StatusFlagFormat.Hexadecimal => "CPSR:[CPSR,8h] ",
+						StatusFlagFormat.CompactText => "CPSR:[CPSR] ",
+						StatusFlagFormat.Text or _ => "CPSR:[CPSR,7] "
+					});
+					addTag(cfg.ShowStatusFlags, "Mode: [Mode,3] ");
+					break;
+
+				case CpuType.Ws:
+					addTag(cfg.ShowRegisters, "AX:[AX,4h] BX:[BX,4h] CX:[CX,4h] DX:[DX,4h] DS:[DS,4h] ES:[ES,4h] SS:[SS,4h] SP:[SP,4h] BP:[BP,4h] SI:[SI,4h] DI:[DI,4h] ");
+					addTag(cfg.ShowStatusFlags, cfg.StatusFormat switch {
+						StatusFlagFormat.Hexadecimal => "F:[F,4h] ",
+						StatusFlagFormat.CompactText => "F:[F] ",
+						StatusFlagFormat.Text or _ => "F:[F,10] "
+					});
+					break;
 			}
 
 			addTag(cfg.ShowFramePosition, "V:[Scanline,3] H:[Cycle,3] ");
@@ -639,6 +665,8 @@ namespace Mesen.Debugger.ViewModels
 				CpuType.Nes => new string[] { "A", "X", "Y", "P", "SP" },
 				CpuType.Pce => new string[] { "A", "X", "Y", "P", "SP" },
 				CpuType.Sms => new string[] { "A", "B", "C", "D", "E", "F", "H", "L", "IX", "IY", "A'", "B'", "C'", "D'", "E'", "F'", "H'", "L'", "I", "R", "PS", "SP" },
+				CpuType.Gba or CpuType.St018  => new string[] { "R0", "R1", "R2", "R3", "R4", "R5", "R6", "R7", "R8", "R9", "R10", "R11", "R12", "R13", "R14", "R15", "CPSR" },
+				CpuType.Ws => new string[] { "AX", "BX", "CX", "DX", "CS", "IP", "SS", "SP", "BP", "DS", "ES", "SI", "DI", "F" },
 				_ => throw new Exception("unsupported cpu type")
 			};
 
@@ -712,17 +740,8 @@ namespace Mesen.Debugger.ViewModels
 		internal void SetConsoleType(ConsoleType consoleType)
 		{
 			_consoleType = consoleType;
-			switch(consoleType) {
-				case ConsoleType.Snes:
-					AddressSize = 6;
-					ByteCodeSize = 4;
-					break;
-
-				default:
-					AddressSize = 4;
-					ByteCodeSize = 3;
-					break;
-			}
+			AddressSize = consoleType.GetMainCpuType().GetAddressSize();
+			ByteCodeSize = consoleType.GetMainCpuType().GetByteCodeSize();
 		}
 	}
 

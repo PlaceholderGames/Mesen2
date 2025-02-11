@@ -21,6 +21,8 @@ PcePsg::PcePsg(Emulator* emu, PceConsole* console)
 		_channels[i].Init(i, this);
 	}
 
+	UpdateSoundOffset();
+
 	_leftChannel = blip_new(PcePsg::MaxSamples);
 	_rightChannel = blip_new(PcePsg::MaxSamples);
 
@@ -87,6 +89,8 @@ void PcePsg::Write(uint16_t addr, uint8_t value)
 		case 8: _state.LfoFrequency = value; break;
 		case 9: _state.LfoControl = value; break;
 	}
+
+	UpdateOutput(_emu->GetSettings()->GetPcEngineConfig());
 }
 
 void PcePsg::Run()
@@ -103,40 +107,63 @@ void PcePsg::Run()
 			}
 		}
 
-		int16_t leftOutput = 0;
-		int16_t rightOutput = 0;
 		for(int i = 0; i < 6; i++) {
-			PcePsgChannel& ch = _channels[i];
-			ch.Run(minTimer);
-			leftOutput += (int32_t)ch.GetOutput(true, _state.LeftVolume) * (int32_t)cfg.ChannelVol[i] / 100;
-			rightOutput += (int32_t)ch.GetOutput(false, _state.RightVolume) * (int32_t)cfg.ChannelVol[i] / 100;
+			_channels[i].Run(minTimer);
 		}
 
 		_clockCounter += minTimer;
 		clocksToRun -= minTimer * 6;
 
-		if(_prevLeftOutput != leftOutput) {
-			blip_add_delta(_leftChannel, _clockCounter, leftOutput - _prevLeftOutput);
-			_prevLeftOutput = leftOutput;
-		}
-
-		if(_prevRightOutput != rightOutput) {
-			blip_add_delta(_rightChannel, _clockCounter, rightOutput - _prevRightOutput);
-			_prevRightOutput = rightOutput;
-		}
+		UpdateOutput(cfg);
 	}
 
 	if(_clockCounter >= 20000) {
-		blip_end_frame(_leftChannel, _clockCounter);
-		blip_end_frame(_rightChannel, _clockCounter);
-
-		uint32_t sampleCount = (uint32_t)blip_read_samples(_leftChannel, _soundBuffer, PcePsg::MaxSamples, 1);
-		blip_read_samples(_rightChannel, _soundBuffer + 1, PcePsg::MaxSamples, 1);
-		_soundMixer->PlayAudioBuffer(_soundBuffer, sampleCount, PcePsg::SampleRate);
-		_clockCounter = 0;
+		PlayQueuedAudio();
 	}
 
 	_lastClock = clock - clocksToRun;
+}
+
+void PcePsg::UpdateOutput(PcEngineConfig& cfg)
+{
+	int16_t leftOutput = 0;
+	int16_t rightOutput = 0;
+	for(int i = 0; i < 6; i++) {
+		PcePsgChannel& ch = _channels[i];
+		leftOutput += (int32_t)ch.GetOutput(true, _state.LeftVolume) * (int32_t)cfg.ChannelVol[i] / 100;
+		rightOutput += (int32_t)ch.GetOutput(false, _state.RightVolume) * (int32_t)cfg.ChannelVol[i] / 100;
+	}
+
+	if(_prevLeftOutput != leftOutput) {
+		blip_add_delta(_leftChannel, _clockCounter, leftOutput - _prevLeftOutput);
+		_prevLeftOutput = leftOutput;
+	}
+
+	if(_prevRightOutput != rightOutput) {
+		blip_add_delta(_rightChannel, _clockCounter, rightOutput - _prevRightOutput);
+		_prevRightOutput = rightOutput;
+	}
+}
+
+void PcePsg::UpdateSoundOffset()
+{
+	uint8_t offset = _emu->GetSettings()->GetPcEngineConfig().UseHuC6280aAudio ? 0x10 : 0;
+	for(int i = 0; i < 6; i++) {
+		_channels[i].SetOutputOffset(offset);
+	}
+}
+
+void PcePsg::PlayQueuedAudio()
+{
+	blip_end_frame(_leftChannel, _clockCounter);
+	blip_end_frame(_rightChannel, _clockCounter);
+
+	uint32_t sampleCount = (uint32_t)blip_read_samples(_leftChannel, _soundBuffer, PcePsg::MaxSamples, 1);
+	blip_read_samples(_rightChannel, _soundBuffer + 1, PcePsg::MaxSamples, 1);
+	_soundMixer->PlayAudioBuffer(_soundBuffer, sampleCount, PcePsg::SampleRate);
+	_clockCounter = 0;
+	
+	UpdateSoundOffset();
 }
 
 void PcePsg::Serialize(Serializer& s)

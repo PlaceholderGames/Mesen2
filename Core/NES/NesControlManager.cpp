@@ -38,6 +38,7 @@
 #include "NES/Input/AsciiTurboFile.h"
 #include "NES/Input/BattleBox.h"
 #include "NES/Input/VirtualBoyController.h"
+#include "NES/Epsm.h"
 
 NesControlManager::NesControlManager(NesConsole* console) : BaseControlManager(console->GetEmulator(), CpuType::Nes)
 {
@@ -250,22 +251,37 @@ uint8_t NesControlManager::ReadRam(uint16_t addr)
 
 void NesControlManager::WriteRam(uint16_t addr, uint8_t value)
 {
-	for(shared_ptr<BaseControlDevice> &device : _controlDevices) {
-		if(device->IsConnected()) {
-			device->WriteRam(addr, value);
+	//The OUT pins are only updated at the start of PUT cycles
+	_writeAddr = addr;
+	_writeValue = value;
+	_writePending = (_console->GetMasterClock() & 0x01) ? 1 : 2;
+}
+
+void NesControlManager::ProcessWrites()
+{
+	if(_writePending && --_writePending == 0) {
+		if(_console->GetEpsm() && _writeAddr == 0x4016) {
+			_console->GetEpsm()->Write(_console->GetMemoryManager()->GetOpenBus(), _writeValue);
+		}
+
+		for(shared_ptr<BaseControlDevice>& device : _controlDevices) {
+			if(device->IsConnected()) {
+				device->WriteRam(_writeAddr, _writeValue);
+			}
 		}
 	}
 }
 
 void NesControlManager::Reset(bool softReset)
 {
-	ResetLagCounter();
 }
 
 void NesControlManager::Serialize(Serializer& s)
 {
 	BaseControlManager::Serialize(s);
-	SV(_lagCounter);
+	SV(_writeAddr);
+	SV(_writeValue);
+	SV(_writePending);
 
 	if(!s.IsSaving()) {
 		UpdateControlDevices();

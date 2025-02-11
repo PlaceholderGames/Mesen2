@@ -6,6 +6,7 @@ using Avalonia.Threading;
 using DataBoxControl;
 using Mesen.Config;
 using Mesen.Debugger.Controls;
+using Mesen.Debugger.Labels;
 using Mesen.Debugger.Utilities;
 using Mesen.Debugger.Windows;
 using Mesen.Interop;
@@ -52,6 +53,7 @@ namespace Mesen.Debugger.ViewModels
 		[Reactive] public List<ContextMenuAction> ToolbarItems { get; private set; } = new();
 
 		private PictureViewer _picViewer;
+		private bool _refreshPending;
 
 		[Obsolete("For designer only")]
 		public EventViewerViewModel() : this(CpuType.Nes, new PictureViewer(), null!, null) { }
@@ -128,8 +130,8 @@ namespace Mesen.Debugger.ViewModels
 				return;
 			}
 
-			DebugShortcutManager.CreateContextMenu(_picViewer, GetContextMenuActions());
-			DebugShortcutManager.CreateContextMenu(listView, GetContextMenuActions());
+			AddDisposables(DebugShortcutManager.CreateContextMenu(_picViewer, GetContextMenuActions()));
+			AddDisposables(DebugShortcutManager.CreateContextMenu(listView, GetContextMenuActions()));
 
 			UpdateConfig();
 			RefreshData();
@@ -188,18 +190,18 @@ namespace Mesen.Debugger.ViewModels
 					OnClick = () => {
 						if(SelectedEvent != null) {
 							int addr = (int)SelectedEvent.Value.ProgramCounter;
-							BreakpointManager.ToggleBreakpoint(new AddressInfo() { Address = addr, Type = CpuType.ToMemoryType() }, CpuType, true);
+							BreakpointManager.ToggleBreakpoint(new AddressInfo() { Address = addr, Type = CpuType.ToMemoryType() }, CpuType);
 						}
 					}
 				},
 				new ContextMenuAction() {
 					ActionType = ActionType.ToggleBreakpoint,
-					IsEnabled = () => SelectedEvent != null && SelectedEvent?.Type == DebugEventType.Register,
-					HintText = () => (SelectedEvent != null && SelectedEvent?.Type == DebugEventType.Register ? $"Address - ${SelectedEvent.Value.Operation.Address:X4}" : ""),
+					IsEnabled = () => SelectedEvent?.Flags.HasFlag(EventFlags.ReadWriteOp) == true,
+					HintText = () => SelectedEvent?.Flags.HasFlag(EventFlags.ReadWriteOp) == true ? $"Address - ${SelectedEvent.Value.Operation.Address:X4}" : "",
 					OnClick = () => {
-						if(SelectedEvent != null && SelectedEvent?.Type == DebugEventType.Register) {
+						if(SelectedEvent?.Flags.HasFlag(EventFlags.ReadWriteOp) == true) {
 							int addr = (int)SelectedEvent.Value.Operation.Address;
-							BreakpointManager.ToggleBreakpoint(new AddressInfo() { Address = addr, Type = CpuType.ToMemoryType() }, CpuType, false);
+							BreakpointManager.ToggleBreakpoint(new AddressInfo() { Address = addr, Type = CpuType.ToMemoryType() }, CpuType);
 						}
 					}
 				},
@@ -236,6 +238,8 @@ namespace Mesen.Debugger.ViewModels
 				CpuType.Gameboy => Config.GbConfig,
 				CpuType.Pce => Config.PceConfig,
 				CpuType.Sms => Config.SmsConfig,
+				CpuType.Gba => Config.GbaConfig,
+				CpuType.Ws => Config.WsConfig,
 				_ => throw new Exception("Invalid cpu type")
 			};
 		}
@@ -266,20 +270,35 @@ namespace Mesen.Debugger.ViewModels
 
 		public void RefreshUi(bool forAutoRefresh)
 		{
-			Dispatcher.UIThread.Post(() => {
-				InitBitmap();
-				using(var bitmapLock = ViewerBitmap.Lock()) {
-					DebugApi.GetEventViewerOutput(CpuType, bitmapLock.FrameBuffer.Address, (uint)(ViewerBitmap.Size.Width * ViewerBitmap.Size.Height * sizeof(UInt32)));
-				}
+			if(_refreshPending) {
+				return;
+			}
 
-				if(ShowListView) {
-					DateTime now = DateTime.Now;
-					if(!forAutoRefresh || (now - _lastListRefresh).TotalMilliseconds >= 66) {
-						_lastListRefresh = now;
-						ListView.RefreshList();
-					}
-				}
+			_refreshPending = true;
+			Dispatcher.UIThread.Post(() => {
+				InternalRefreshUi(forAutoRefresh);
+				_refreshPending = false;
 			});
+		}
+
+		private void InternalRefreshUi(bool forAutoRefresh)
+		{
+			if(Disposed) {
+				return;
+			}
+
+			InitBitmap();
+			using(var bitmapLock = ViewerBitmap.Lock()) {
+				DebugApi.GetEventViewerOutput(CpuType, bitmapLock.FrameBuffer.Address, (uint)(ViewerBitmap.Size.Width * ViewerBitmap.Size.Height * sizeof(UInt32)));
+			}
+
+			if(ShowListView) {
+				DateTime now = DateTime.Now;
+				if(!forAutoRefresh || (now - _lastListRefresh).TotalMilliseconds >= 66) {
+					_lastListRefresh = now;
+					ListView.RefreshList();
+				}
+			}
 		}
 
 		private PixelPoint GetEventLocation(DebugEventInfo evt)
@@ -290,6 +309,8 @@ namespace Mesen.Debugger.ViewModels
 				CpuType.Gameboy => new PixelPoint(evt.Cycle * 2, evt.Scanline * 2),
 				CpuType.Pce => new PixelPoint(evt.Cycle, evt.Scanline * 2),
 				CpuType.Sms => new PixelPoint(evt.Cycle * 2, evt.Scanline * 2),
+				CpuType.Gba => new PixelPoint(evt.Cycle, evt.Scanline * 4),
+				CpuType.Ws => new PixelPoint(evt.Cycle * 2, evt.Scanline * 2),
 				_ => throw new Exception("Invalid cpu type")
 			};
 		}
@@ -307,35 +328,56 @@ namespace Mesen.Debugger.ViewModels
 				Height = 2
 			};
 
+			int xPos;
+			int yPos;
 			switch(CpuType) {
 				case CpuType.Snes:
 					result.X = p.X;
-					result.DisplayValue = $"{result.X * 2}, {result.Y / 2}";
+					xPos = result.X * 2;
+					yPos = result.Y / 2;
 					break;
 
 				case CpuType.Nes:
 					result.X = p.X / 2 * 2;
-					result.DisplayValue = $"{result.X / 2}, {result.Y / 2 - 1}";
+					xPos = result.X / 2;
+					yPos = result.Y / 2 - 1;
 					break;
 
 				case CpuType.Gameboy:
 					result.X = p.X / 2 * 2;
-					result.DisplayValue = $"{result.X / 2}, {result.Y / 2}";
+					xPos = result.X / 2;
+					yPos = result.Y / 2;
 					break;
 
 				case CpuType.Pce:
 					result.X = p.X;
-					result.DisplayValue = $"{result.X}, {result.Y / 2}";
+					xPos = result.X;
+					yPos = result.Y / 2;
 					break;
 
 				case CpuType.Sms:
 					result.X = p.X / 2 * 2;
-					result.DisplayValue = $"{result.X / 2}, {result.Y / 2}";
+					xPos = result.X / 2;
+					yPos = result.Y / 2;
+					break;
+
+				case CpuType.Gba:
+					result.X = p.X;
+					xPos = result.X;
+					yPos = result.Y / 4;
+					break;
+
+				case CpuType.Ws:
+					result.X = p.X / 2 * 2;
+					xPos = result.X / 2;
+					yPos = result.Y / 2;
 					break;
 
 				default:
 					throw new Exception("Invalid cpu type");
 			}
+
+			result.DisplayValue = $"X: {xPos}\nY: {yPos}";
 
 			GridHighlightPoint = result;
 		}
@@ -348,10 +390,14 @@ namespace Mesen.Debugger.ViewModels
 				DebugApi.SetEventViewerConfig(CpuType, nesCfg.ToInterop());
 			} else if(ConsoleConfig is GbEventViewerConfig gbCfg) {
 				DebugApi.SetEventViewerConfig(CpuType, gbCfg.ToInterop());
+			} else if(ConsoleConfig is GbaEventViewerConfig gbaCfg) {
+				DebugApi.SetEventViewerConfig(CpuType, gbaCfg.ToInterop());
 			} else if(ConsoleConfig is PceEventViewerConfig pceCfg) {
 				DebugApi.SetEventViewerConfig(CpuType, pceCfg.ToInterop());
 			} else if(ConsoleConfig is SmsEventViewerConfig smsCfg) {
 				DebugApi.SetEventViewerConfig(CpuType, smsCfg.ToInterop());
+			} else if(ConsoleConfig is WsEventViewerConfig wsCfg) {
+				DebugApi.SetEventViewerConfig(CpuType, wsCfg.ToInterop());
 			}
 		}
 
@@ -379,7 +425,7 @@ namespace Mesen.Debugger.ViewModels
 			ListView,
 		}
 
-		public static string GetEventDetails(DebugEventInfo evt, bool singleLine)
+		public static string GetEventDetails(CpuType cpuType, DebugEventInfo evt, bool singleLine)
 		{
 			bool isDma = evt.DmaChannel >= 0 && (evt.Operation.Type == MemoryOperationType.DmaWrite || evt.Operation.Type == MemoryOperationType.DmaRead);
 
@@ -397,16 +443,14 @@ namespace Mesen.Debugger.ViewModels
 			}
 
 			if(evt.Type == DebugEventType.Breakpoint && evt.BreakpointId >= 0) {
-				var breakpoints = BreakpointManager.Breakpoints;
-				if(evt.BreakpointId < breakpoints.Count) {
-					Breakpoint bp = breakpoints[evt.BreakpointId];
+				Breakpoint? bp = BreakpointManager.GetBreakpointById(evt.BreakpointId);
+				if(bp != null) {
 					string bpInfo = "Breakpoint - ";
 					bpInfo += "CPU: " + ResourceHelper.GetEnumText(bp.CpuType);
 					bpInfo += singleLine ? " - " : Environment.NewLine;
 					bpInfo += "Type: " + bp.ToReadableType();
 					bpInfo += singleLine ? " - " : Environment.NewLine;
 					bpInfo += "Addresses: " + bp.GetAddressString(true);
-					bpInfo += singleLine ? " - " : Environment.NewLine;
 					if(bp.Condition.Length > 0) {
 						bpInfo += singleLine ? " - " : Environment.NewLine;
 						bpInfo += "Condition: " + bp.Condition;
@@ -417,40 +461,45 @@ namespace Mesen.Debugger.ViewModels
 
 			if(isDma) {
 				string dmaInfo = "";
-				bool indirectHdma = false;
-				if((evt.DmaChannel & EventViewerViewModel.HdmaChannelFlag) != 0) {
-					indirectHdma = evt.DmaChannelInfo.HdmaIndirectAddressing;
-					dmaInfo += "HDMA #" + (evt.DmaChannel & 0x07);
-					dmaInfo += indirectHdma ? " (indirect)" : "";
+				if(cpuType == CpuType.Snes) {
+					bool indirectHdma = false;
+					if((evt.DmaChannel & EventViewerViewModel.HdmaChannelFlag) != 0) {
+						indirectHdma = evt.DmaChannelInfo.HdmaIndirectAddressing;
+						dmaInfo += "HDMA #" + (evt.DmaChannel & 0x07);
+						dmaInfo += indirectHdma ? " (indirect)" : "";
+						dmaInfo += singleLine ? " - " : Environment.NewLine;
+						dmaInfo += "Line Counter: $" + evt.DmaChannelInfo.HdmaLineCounterAndRepeat.ToString("X2");
+					} else {
+						dmaInfo += "DMA #" + (evt.DmaChannel & 0x07);
+					}
+
 					dmaInfo += singleLine ? " - " : Environment.NewLine;
-					dmaInfo += "Line Counter: $" + evt.DmaChannelInfo.HdmaLineCounterAndRepeat.ToString("X2");
+					dmaInfo += "Mode: " + evt.DmaChannelInfo.TransferMode;
+					dmaInfo += singleLine ? " - " : Environment.NewLine;
+
+					int aBusAddress;
+					if(indirectHdma) {
+						aBusAddress = (evt.DmaChannelInfo.SrcBank << 16) | evt.DmaChannelInfo.TransferSize;
+					} else {
+						aBusAddress = (evt.DmaChannelInfo.SrcBank << 16) | evt.DmaChannelInfo.SrcAddress;
+					}
+
+					if(!evt.DmaChannelInfo.InvertDirection) {
+						dmaInfo += "$" + aBusAddress.ToString("X4") + " -> $" + (0x2100 | evt.DmaChannelInfo.DestAddress).ToString("X4");
+					} else {
+						dmaInfo += "$" + aBusAddress.ToString("X4") + " <- $" + (0x2100 | evt.DmaChannelInfo.DestAddress).ToString("X4");
+					}
 				} else {
-					dmaInfo += "DMA #" + (evt.DmaChannel & 0x07);
+					dmaInfo = "DMA Channel #" + evt.DmaChannel;
 				}
-
-				dmaInfo += singleLine ? " - " : Environment.NewLine;
-				dmaInfo += "Mode: " + evt.DmaChannelInfo.TransferMode;
-				dmaInfo += singleLine ? " - " : Environment.NewLine;
-
-				int aBusAddress;
-				if(indirectHdma) {
-					aBusAddress = (evt.DmaChannelInfo.SrcBank << 16) | evt.DmaChannelInfo.TransferSize;
-				} else {
-					aBusAddress = (evt.DmaChannelInfo.SrcBank << 16) | evt.DmaChannelInfo.SrcAddress;
-				}
-
-				if(!evt.DmaChannelInfo.InvertDirection) {
-					dmaInfo += "$" + aBusAddress.ToString("X4") + " -> $" + (0x2100 | evt.DmaChannelInfo.DestAddress).ToString("X4");
-				} else {
-					dmaInfo += "$" + aBusAddress.ToString("X4") + " <- $" + (0x2100 | evt.DmaChannelInfo.DestAddress).ToString("X4");
-				}
-
 				details.Add(dmaInfo.Trim());
 			}
 
 			if(singleLine) {
-				if(details.Count > 0) {
+				if(details.Count > 1) {
 					return "[" + string.Join("] [", details) + "]";
+				} else if(details.Count == 1) {
+					return details[0];
 				} else {
 					return "";
 				}
@@ -464,6 +513,7 @@ namespace Mesen.Debugger.ViewModels
 	{
 		private DebugEventInfo[] _events = Array.Empty<DebugEventInfo>();
 		private int _index;
+		private CpuType _cpuType;
 
 		public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -487,13 +537,14 @@ namespace Mesen.Debugger.ViewModels
 
 		public DebugEventInfo RawEvent => _events[_index];
 
-		public DebugEventViewModel(DebugEventInfo[] events, int index)
+		public DebugEventViewModel(DebugEventInfo[] events, int index, CpuType cpuType)
 		{
-			Update(events, index);
+			Update(events, index, cpuType);
 		}
 
-		public void Update(DebugEventInfo[] events, int index)
+		public void Update(DebugEventInfo[] events, int index, CpuType cpuType)
 		{
+			_cpuType = cpuType;
 			_events = events;
 			_index = index;
 			
@@ -515,10 +566,17 @@ namespace Mesen.Debugger.ViewModels
 			Scanline = evt.Scanline.ToString();
 			Cycle = evt.Cycle.ToString();
 			string address = "";
-			if(evt.Type == DebugEventType.Register) {
+			bool isReadWriteOp = evt.Flags.HasFlag(EventFlags.ReadWriteOp);
+			if(isReadWriteOp) {
 				address += "$" + evt.Operation.Address.ToString("X4");
-				string regName = evt.GetRegisterName();
+
+				CodeLabel? label = LabelManager.GetLabel(new AddressInfo() { Address = (int)evt.Operation.Address, Type = _cpuType.ToMemoryType() });
+				if(label != null) {
+					address = label.Label + " (" + address + ")";
+				}
+				
 				if(evt.RegisterId >= 0) {
+					string regName = evt.GetRegisterName();
 					if(string.IsNullOrEmpty(regName)) {
 						address += $" (${evt.RegisterId:X2})";
 					} else {
@@ -526,13 +584,14 @@ namespace Mesen.Debugger.ViewModels
 					}
 				}
 			}
+
 			Address = address;
-			Value = evt.Type == DebugEventType.Register ? "$" + evt.Operation.Value.ToString("X2") : "";
+			Value = isReadWriteOp ? "$" + evt.Operation.Value.ToString("X2") : "";
 			Type = ResourceHelper.GetEnumText(evt.Type);
-			if(evt.Type == DebugEventType.Register) {
+			if(isReadWriteOp) {
 				Type += evt.Operation.Type.IsWrite() ? " (W)" : " (R)";
 			}
-			Details = EventViewerViewModel.GetEventDetails(evt, true);
+			Details = EventViewerViewModel.GetEventDetails(_cpuType, evt, true);
 		}
 	}
 }

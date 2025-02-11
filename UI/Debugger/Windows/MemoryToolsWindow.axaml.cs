@@ -79,6 +79,15 @@ namespace Mesen.Debugger.Windows
 			_editor.Focus();
 		}
 
+		protected override void OnGotFocus(GotFocusEventArgs e)
+		{
+			base.OnGotFocus(e);
+			if(FocusManager?.GetFocusedElement() == this) {
+				//Focus on editor whenever the window itself is focused
+				_editor.Focus();
+			}
+		}
+
 		private void InitializeComponent()
 		{
 			AvaloniaXamlLoader.Load(this);
@@ -136,14 +145,24 @@ namespace Mesen.Debugger.Windows
 
 		private void editor_ByteUpdated(object? sender, ByteUpdatedEventArgs e)
 		{
-			DebugApi.SetMemoryValue(_model.Config.MemoryType, (uint)e.ByteOffset, e.Value);
+			if(e.Values != null) {
+				DebugApi.SetMemoryValues(_model.Config.MemoryType, (uint)e.ByteOffset, e.Values, e.Values.Length);
+			} else if(e.Value != null) {
+				if(e.Length > 0) {
+					byte[] data = new byte[e.Length];
+					Array.Fill<byte>(data, e.Value.Value);
+					DebugApi.SetMemoryValues(_model.Config.MemoryType, (uint)e.ByteOffset, data, data.Length);
+				} else {
+					DebugApi.SetMemoryValue(_model.Config.MemoryType, (uint)e.ByteOffset, e.Value.Value);
+				}
+			}
 		}
 
 		private void InitializeActions()
 		{
 			DebugConfig cfg = ConfigManager.Config.Debug;
 
-			DebugShortcutManager.CreateContextMenu(_editor, new ContextMenuAction[] {
+			_model.AddDisposables(DebugShortcutManager.CreateContextMenu(_editor, new ContextMenuAction[] {
 				GetMarkSelectionAction(),
 				new ContextMenuSeparator(),
 				GetAddWatchAction(),
@@ -155,6 +174,18 @@ namespace Mesen.Debugger.Windows
 				new ContextMenuSeparator() { IsVisible = () => _model.Config.MemoryType.SupportsFreezeAddress() },
 				GetFreezeAction(ActionType.FreezeMemory, DebuggerShortcut.MemoryViewer_Freeze),
 				GetFreezeAction(ActionType.UnfreezeMemory, DebuggerShortcut.MemoryViewer_Unfreeze),
+				new ContextMenuSeparator(),
+				new ContextMenuAction() {
+					ActionType = ActionType.Undo,
+					IsEnabled = () => DebugApi.HasUndoHistory(),
+					Shortcut = () => cfg.Shortcuts.Get(DebuggerShortcut.Undo),
+					OnClick = () => {
+						if(DebugApi.HasUndoHistory()){
+							DebugApi.PerformUndo();
+							_editor.InvalidateVisual();
+						}
+					}
+				},
 				new ContextMenuSeparator(),
 				new ContextMenuAction() {
 					ActionType = ActionType.Copy,
@@ -173,7 +204,7 @@ namespace Mesen.Debugger.Windows
 					OnClick = () => _editor.SelectAll(),
 					Shortcut = () => cfg.Shortcuts.Get(DebuggerShortcut.SelectAll)
 				},
-			});
+			}));
 
 			_model.FileMenuItems = _model.AddDisposables(new List<ContextMenuAction>() {
 				GetImportAction(),
@@ -224,7 +255,8 @@ namespace Mesen.Debugger.Windows
 					ActionType = ActionType.GoToAddress,
 					Shortcut = () => ConfigManager.Config.Debug.Shortcuts.Get(DebuggerShortcut.GoToAddress),
 					OnClick = async () => {
-						int? address = await new GoToWindow(DebugApi.GetMemorySize(_model.Config.MemoryType) - 1).ShowCenteredDialog<int?>(this);
+						MemoryType memType = _model.Config.MemoryType;
+						int? address = await new GoToWindow(memType.ToCpuType(), memType, DebugApi.GetMemorySize(memType) - 1).ShowCenteredDialog<int?>(this);
 						if(address != null) {
 							_editor.SetCursorPosition(address.Value, scrollToTop: true);
 							_editor.Focus();
@@ -512,9 +544,20 @@ namespace Mesen.Debugger.Windows
 
 					CodeLabel? label = LabelManager.GetLabel((uint)addr.Value.Address, addr.Value.Type);
 					if(label == null) {
+						int length = 1;
+						if(_editor.SelectionLength > 1) {
+							int end = addr.Value.Address + _editor.SelectionLength;
+							int memSize = DebugApi.GetMemorySize(addr.Value.Type);
+							if(end >= memSize) {
+								end = memSize;
+							}
+							length = end - addr.Value.Address;
+						}
+
 						label = new CodeLabel() {
 							Address = (uint)addr.Value.Address,
-							MemoryType = addr.Value.Type
+							MemoryType = addr.Value.Type,
+							Length = (uint)length
 						};
 					}
 
@@ -562,7 +605,7 @@ namespace Mesen.Debugger.Windows
 							BreakOnWrite = true,
 							BreakOnRead = true
 						};
-						if(bp.IsCpuBreakpoint) {
+						if(bp.SupportsExec) {
 							bp.BreakOnExec = true;
 						}
 					}
@@ -614,6 +657,7 @@ namespace Mesen.Debugger.Windows
 		{
 			switch(e.NotificationType) {
 				case ConsoleNotificationType.CodeBreak:
+				case ConsoleNotificationType.StateLoaded:
 					Dispatcher.UIThread.Post(() => {
 						_editor.InvalidateVisual();
 					});

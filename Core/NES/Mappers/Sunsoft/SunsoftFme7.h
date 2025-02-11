@@ -21,6 +21,7 @@ protected:
 	uint32_t GetWorkRamPageSize() override { return 0x2000; }
 	uint32_t GetSaveRamSize() override { return 0x8000; }
 	uint32_t GetSaveRamPageSize() override { return 0x2000; }
+	bool EnableCpuClockHook() override { return true; }
 
 	void InitMapper() override
 	{
@@ -53,6 +54,8 @@ protected:
 
 	void ProcessCpuClock() override
 	{
+		BaseProcessCpuClock();
+
 		if(_irqCounterEnabled) {
 			_irqCounter--;
 			if(_irqCounter == 0xFFFF) {

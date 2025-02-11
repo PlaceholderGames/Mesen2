@@ -16,17 +16,20 @@ namespace Mesen.Debugger.Labels
 			HashSet<CpuType> cpuTypes = EmuApi.GetRomInfo().CpuTypes;
 			if(cpuTypes.Contains(CpuType.Gameboy)) {
 				SetGameboyDefaultLabels();
-			} 
-			if(cpuTypes.Contains(CpuType.Nes)) {
-				SetDefaultNesLabels();
-			} 
+			}
+
 			if(cpuTypes.Contains(CpuType.Snes)) {
 				SetSnesDefaultLabels();
-			} 
-			if(cpuTypes.Contains(CpuType.Pce)) {
+			} else if(cpuTypes.Contains(CpuType.Nes)) {
+				SetDefaultNesLabels();
+			} else if(cpuTypes.Contains(CpuType.Pce)) {
 				SetPceDefaultLabels();
 			} else if(cpuTypes.Contains(CpuType.Sms)) {
 				SetSmsDefaultLabels();
+			} else if(cpuTypes.Contains(CpuType.Gba)) {
+				SetGbaDefaultLabels();
+			} else if(cpuTypes.Contains(CpuType.Ws)) {
+				SetWsDefaultLabels();
 			}
 		}
 
@@ -334,7 +337,7 @@ namespace Mesen.Debugger.Labels
 			LabelManager.SetLabel(0x000, MemoryType.PceMemory, "VDC_AR_0000", "Address Register (W) / Status Register (R)");
 			LabelManager.SetLabel(0x002, MemoryType.PceMemory, "VDC_DATA_LO_0002", "Data (low byte)");
 			LabelManager.SetLabel(0x003, MemoryType.PceMemory, "VDC_DATA_HI_0003", "Data (high byte) + Latch");
-			
+
 			LabelManager.SetLabel(0x400, MemoryType.PceMemory, "VCE_CONTROL_0400", "VCE Control Register");
 			LabelManager.SetLabel(0x402, MemoryType.PceMemory, "VCE_ADDR_LO_0402", "Color Table Address Register (LSB)");
 			LabelManager.SetLabel(0x403, MemoryType.PceMemory, "VCE_ADDR_HI_0403", "Color Table Address Register (MSB)");
@@ -371,6 +374,279 @@ namespace Mesen.Debugger.Labels
 			LabelManager.SetLabel(0xBF, MemoryType.SmsPort, "VDP_CMD_STATUS_BF", "");
 			LabelManager.SetLabel(0xDC, MemoryType.SmsPort, "JOY1_DC", "");
 			LabelManager.SetLabel(0xDD, MemoryType.SmsPort, "JOY2_DD", "");
+		}
+
+		private static void SetGbaDefaultLabels()
+		{
+			Action<uint, uint, string, string> addLabel = (addr, length, label, desc) => {
+				LabelManager.SetLabel(new CodeLabel() {
+					Address = 0x4000000 | addr,
+					Length = length,
+					MemoryType = MemoryType.GbaMemory,
+					Label = label,
+					Comment = desc
+				}, false);
+			};
+
+			addLabel(0x000, 2, "DISPCNT", "Display Control");
+			addLabel(0x002, 1, "GREENSWAP", "");
+			addLabel(0x004, 1, "DISPSTAT", "Display Status");
+			addLabel(0x005, 1, "LYC", "");
+			addLabel(0x006, 1, "VCOUNT", "");
+
+			addLabel(0x008, 2, "BG0CNT", "BG0 Control");
+			addLabel(0x00A, 2, "BG1CNT", "BG1 Control");
+			addLabel(0x00C, 2, "BG2CNT", "BG2 Control");
+			addLabel(0x00E, 2, "BG3CNT", "BG3 Control");
+
+			addLabel(0x010, 2, "BG0HOFS", "BG0 X Scroll Offset");
+			addLabel(0x012, 2, "BG0VOFS", "BG0 Y Scroll Offset");
+			addLabel(0x014, 2, "BG1HOFS", "BG1 X Scroll Offset");
+			addLabel(0x016, 2, "BG1VOFS", "BG1 Y Scroll Offset");
+			addLabel(0x018, 2, "BG2HOFS", "BG2 X Scroll Offset");
+			addLabel(0x01A, 2, "BG2VOFS", "BG2 Y Scroll Offset");
+			addLabel(0x01C, 2, "BG3HOFS", "BG3 X Scroll Offset");
+			addLabel(0x01E, 2, "BG3VOFS", "BG3 Y Scroll Offset");
+			
+			addLabel(0x020, 2, "BG2PA", "BG2 Transform Param A");
+			addLabel(0x022, 2, "BG2PB", "BG2 Transform Param B");
+			addLabel(0x024, 2, "BG2PC", "BG2 Transform Param C");
+			addLabel(0x026, 2, "BG2PD", "BG2 Transform Param D");
+			addLabel(0x028, 4, "BG2X", "BG2 Origin X");
+			addLabel(0x02C, 4, "BG2Y", "BG2 Origin Y");
+
+			addLabel(0x030, 2, "BG3PA", "BG3 Transform Param A");
+			addLabel(0x032, 2, "BG3PB", "BG3 Transform Param B");
+			addLabel(0x034, 2, "BG3PC", "BG3 Transform Param C");
+			addLabel(0x036, 2, "BG3PD", "BG3 Transform Param D");
+			addLabel(0x038, 4, "BG3X", "BG3 Origin X");
+			addLabel(0x03C, 4, "BG3Y", "BG3 Origin Y");
+
+			addLabel(0x040, 2, "WIN0H", "Window 0 Start/End X");
+			addLabel(0x042, 2, "WIN1H", "Window 1 Start/End X");
+
+			addLabel(0x044, 2, "WIN0V", "Window 0 Start/End Y");
+			addLabel(0x046, 2, "WIN1V", "Window 1 Start/End Y");
+			
+			addLabel(0x048, 2, "WININ", "Window 0/1 Config");
+			addLabel(0x04A, 2, "WINOUT", "OBJ Window/Outside Window Config");
+			
+			addLabel(0x04C, 2, "MOSAIC", "Mosaic Size");
+			addLabel(0x050, 2, "BLDCNT", "Blend Control");
+			addLabel(0x052, 2, "BLDALPHA", "Blend Coefficients");
+			addLabel(0x054, 1, "BLDY", "Brightness Coefficient");
+
+			addLabel(0x060, 1, "NR10", "Channel 1 Sweep");
+			addLabel(0x062, 1, "NR11", "Channel 1 Length/Wave Pattern Duty");
+			addLabel(0x063, 1, "NR12", "Channel 1 Volume Envelope");
+			addLabel(0x064, 1, "NR13", "Channel 1 Frequency Low");
+			addLabel(0x065, 1, "NR14", "Channel 1 Frequency High");
+
+			addLabel(0x068, 1, "NR21", "Channel 2 Length/Wave Pattern Duty");
+			addLabel(0x069, 1, "NR22", "Channel 2 Volume Envelope");
+			addLabel(0x06C, 1, "NR23", "Channel 2 Frequency Low");
+			addLabel(0x06D, 1, "NR24", "Channel 2 Frequency High");
+
+			addLabel(0x070, 1, "NR30", "Channel 3 On/Off ");
+			addLabel(0x072, 1, "NR31", "Channel 3 Length");
+			addLabel(0x073, 1, "NR32", "Channel 3 Output Level");
+			addLabel(0x074, 1, "NR33", "Channel 3 Frequency Low");
+			addLabel(0x075, 1, "NR34", "Channel 3 Frequency High");
+
+			addLabel(0x078, 1, "NR41", "Channel 4 Length");
+			addLabel(0x079, 1, "NR42", "Channel 4 Volume Envelope");
+			addLabel(0x07C, 1, "NR43", "Channel 4 Polynomial Counter");
+			addLabel(0x07D, 1, "NR44", "Channel 4 Loop");
+
+			addLabel(0x080, 1, "NR50", "Channel Volume");
+			addLabel(0x081, 1, "NR51", "Channel Left/Right");
+			addLabel(0x082, 2, "SOUNDCNT_H", "Mixing Control");
+			addLabel(0x084, 1, "NR52", "Channel On/Off");
+			addLabel(0x088, 2, "SOUNDBIAS", "");
+
+			addLabel(0x090, 0x10, "WAVERAM", "Channel 3 Wave RAM");
+
+			addLabel(0x0A0, 4, "FIFO_A", "Channel A FIFO");
+			addLabel(0x0A4, 4, "FIFO_B", "Channel B FIFO");
+
+			addLabel(0x0B0, 4, "DMA0SAD", "DMA 0 Source Address");
+			addLabel(0x0B4, 4, "DMA0DAD", "DMA 0 Destination Address");
+			addLabel(0x0B8, 2, "DMA0CNT_L", "DMA 0 Length");
+			addLabel(0x0BA, 2, "DMA0CNT_H", "DMA 0 Control");
+			addLabel(0x0BC, 4, "DMA1SAD", "DMA 1 Source Address");
+			addLabel(0x0C0, 4, "DMA1DAD", "DMA 1 Destination Address");
+			addLabel(0x0C4, 2, "DMA1CNT_L", "DMA 1 Length");
+			addLabel(0x0C6, 2, "DMA1CNT_H", "DMA 1 Control");
+			addLabel(0x0C8, 4, "DMA2SAD", "DMA 2 Source Address");
+			addLabel(0x0CC, 4, "DMA2DAD", "DMA 2 Destination Address");
+			addLabel(0x0D0, 2, "DMA2CNT_L", "DMA 2 Length");
+			addLabel(0x0D2, 2, "DMA2CNT_H", "DMA 2 Control");
+			addLabel(0x0D4, 4, "DMA3SAD", "DMA 3 Source Address");
+			addLabel(0x0D8, 4, "DMA3DAD", "DMA 3 Destination Address");
+			addLabel(0x0DC, 2, "DMA3CNT_L", "DMA 3 Length");
+			addLabel(0x0DE, 2, "DMA3CNT_H", "DMA 3 Control");
+
+			addLabel(0x100, 2, "TM0CNT_L", "Timer 0 Counter/Reload");
+			addLabel(0x102, 1, "TM0CNT_H", "Timer 0 Control");
+			addLabel(0x104, 2, "TM1CNT_L", "Timer 1 Counter/Reload");
+			addLabel(0x106, 1, "TM1CNT_H", "Timer 1 Control");
+			addLabel(0x108, 2, "TM2CNT_L", "Timer 2 Counter/Reload");
+			addLabel(0x10A, 1, "TM2CNT_H", "Timer 2 Control");
+			addLabel(0x10C, 2, "TM3CNT_L", "Timer 3 Counter/Reload");
+			addLabel(0x10E, 1, "TM3CNT_H", "Timer 3 Control");
+
+			addLabel(0x120, 4, "SIODATA32", "Serial I/O Data (32-bit)");
+			addLabel(0x124, 2, "SIOMULTI2", "Serial I/O Multiplayer Data 2");
+			addLabel(0x126, 2, "SIOMULTI3", "Serial I/O Multiplayer Data 3");
+			addLabel(0x128, 2, "SIOCNT", "Serial I/O Control");
+			addLabel(0x12A, 2, "SIODATA8", "Serial I/O Data (8-bit)");
+			
+			addLabel(0x130, 2, "KEYINPUT", "Key Status");
+			addLabel(0x132, 2, "KEYCNT", "Key IRQ Control");
+			
+			addLabel(0x134, 2, "RNT", "Serial I/O Mode Select");
+			addLabel(0x140, 2, "JOYCNT", "Serial I/O JOY Bus Control");
+			addLabel(0x150, 4, "JOYRECV", "Serial I/O JOY Bus Receive Data");
+			addLabel(0x154, 4, "JOYSEND", "Serial I/O JOY Bus Send Data");
+			addLabel(0x158, 2, "JOYSTAT", "Serial I/O JOY Bus Status");
+			
+			addLabel(0x200, 2, "IE", "IRQ Enable");
+			addLabel(0x202, 2, "IF", "IRQ Flags");
+			addLabel(0x204, 2, "WAITCNT", "Waitstate Control");
+			addLabel(0x208, 2, "IME", "IRQ Master Enable");
+			addLabel(0x300, 1, "POSTFLG", "Post Boot Flag");
+			addLabel(0x301, 1, "HALTCNT", "Halt Control");
+		}
+
+		private static void SetWsDefaultLabels()
+		{
+			Action<uint, uint, string> addLabel = (addr, length, label) => {
+				LabelManager.SetLabel(new CodeLabel() {
+					Address = addr,
+					Length = length,
+					MemoryType = MemoryType.WsPort,
+					Label = label
+				}, false);
+			};
+
+			addLabel(0x00, 1, "IO_DISPLAY_CTRL");
+			addLabel(0x01, 1, "IO_DISPLAY_BACK");
+			addLabel(0x02, 1, "IO_LCD_LINE");
+			addLabel(0x03, 1, "IO_LCD_INTERRUPT");
+			addLabel(0x04, 1, "IO_SPR_BASE");
+			addLabel(0x05, 1, "IO_SPR_FIRST");
+			addLabel(0x06, 1, "IO_SPR_COUNT");
+			addLabel(0x07, 1, "IO_SCR_BASE");
+			addLabel(0x08, 1, "IO_SCR2_WIN_X1");
+			addLabel(0x09, 1, "IO_SCR2_WIN_Y1");
+			addLabel(0x0A, 1, "IO_SCR2_WIN_X2");
+			addLabel(0x0B, 1, "IO_SCR2_WIN_Y2");
+			addLabel(0x0C, 1, "IO_SPR_WIN_X1");
+			addLabel(0x0D, 1, "IO_SPR_WIN_Y1");
+			addLabel(0x0E, 1, "IO_SPR_WIN_X2");
+			addLabel(0x0F, 1, "IO_SPR_WIN_Y2");
+			addLabel(0x10, 1, "IO_SCR1_SCRL_X");
+			addLabel(0x11, 1, "IO_SCR1_SCRL_Y");
+			addLabel(0x12, 1, "IO_SCR2_SCRL_X");
+			addLabel(0x13, 1, "IO_SCR2_SCRL_Y");
+			addLabel(0x14, 1, "IO_LCD_CTRL");
+			addLabel(0x15, 1, "IO_LCD_SEG");
+			addLabel(0x16, 1, "IO_LCD_VTOTAL");
+			addLabel(0x17, 1, "IO_LCD_VSYNC");
+			addLabel(0x1A, 1, "IO_LCD_STATUS");
+			addLabel(0x1C, 1, "IO_LCD_SHADE_01");
+			addLabel(0x1D, 1, "IO_LCD_SHADE_23");
+			addLabel(0x1E, 1, "IO_LCD_SHADE_45");
+			addLabel(0x1F, 1, "IO_LCD_SHADE_67");
+			addLabel(0x20, 2, "IO_PAL_0");
+			addLabel(0x22, 2, "IO_PAL_1");
+			addLabel(0x24, 2, "IO_PAL_2");
+			addLabel(0x26, 2, "IO_PAL_3");
+			addLabel(0x28, 2, "IO_PAL_4");
+			addLabel(0x2A, 2, "IO_PAL_5");
+			addLabel(0x2C, 2, "IO_PAL_6");
+			addLabel(0x2E, 2, "IO_PAL_7");
+			addLabel(0x30, 2, "IO_PAL_8");
+			addLabel(0x32, 2, "IO_PAL_9");
+			addLabel(0x34, 2, "IO_PAL_10");
+			addLabel(0x36, 2, "IO_PAL_11");
+			addLabel(0x38, 2, "IO_PAL_12");
+			addLabel(0x3A, 2, "IO_PAL_13");
+			addLabel(0x3C, 2, "IO_PAL_14");
+			addLabel(0x3E, 2, "IO_PAL_15");
+			addLabel(0x40, 2, "IO_DMA_SOURCE_L");
+			addLabel(0x42, 1, "IO_DMA_SOURCE_H");
+			addLabel(0x44, 2, "IO_DMA_DEST");
+			addLabel(0x46, 2, "IO_DMA_LENGTH");
+			addLabel(0x48, 1, "IO_DMA_CTRL");
+			addLabel(0x4A, 2, "IO_SDMA_SOURCE_L");
+			addLabel(0x4C, 1, "IO_SDMA_SOURCE_H");
+			addLabel(0x4E, 2, "IO_SDMA_LENGTH_L");
+			addLabel(0x50, 1, "IO_SDMA_LENGTH_H");
+			addLabel(0x52, 1, "IO_SDMA_CTRL");
+			addLabel(0x60, 1, "IO_SYSTEM_CTRL2");
+			addLabel(0x62, 1, "IO_SYSTEM_CTRL3");
+			addLabel(0x64, 2, "IO_HYPERV_OUT_L");
+			addLabel(0x66, 2, "IO_HYPERV_OUT_R");
+			addLabel(0x68, 1, "IO_HYPERV_IN_L");
+			addLabel(0x69, 1, "IO_HYPERV_IN_R");
+			addLabel(0x6A, 2, "IO_HYPERV_CTRL");
+			addLabel(0x80, 2, "IO_SND_FREQ_CH1");
+			addLabel(0x82, 2, "IO_SND_FREQ_CH2");
+			addLabel(0x84, 2, "IO_SND_FREQ_CH3");
+			addLabel(0x86, 2, "IO_SND_FREQ_CH4");
+			addLabel(0x88, 1, "IO_SND_VOL_CH1");
+			addLabel(0x89, 1, "IO_SND_VOL_CH2");
+			addLabel(0x8A, 1, "IO_SND_VOL_CH3");
+			addLabel(0x8B, 1, "IO_SND_VOL_CH4");
+			addLabel(0x8C, 1, "IO_SND_SWEEP");
+			addLabel(0x8D, 1, "IO_SND_SWEEP_TIME");
+			addLabel(0x8E, 1, "IO_SND_NOISE_CTRL");
+			addLabel(0x8F, 1, "IO_SND_WAVE_BASE");
+			addLabel(0x90, 1, "IO_SND_CH_CTRL");
+			addLabel(0x91, 1, "IO_SND_OUT_CTRL");
+			addLabel(0x92, 2, "IO_SND_RANDOM");
+			addLabel(0x94, 1, "IO_SND_VOL_CH2_VOICE");
+			addLabel(0x95, 1, "IO_SND_TEST");
+			addLabel(0x96, 2, "IO_SND_CH_OUT_R");
+			addLabel(0x98, 2, "IO_SND_CH_OUT_L");
+			addLabel(0x9A, 2, "IO_SND_CH_OUT_LR");
+			addLabel(0x9E, 1, "IO_SND_HW_VOL");
+			addLabel(0xA0, 1, "IO_SYSTEM_CTRL1");
+			addLabel(0xA2, 1, "IO_TIMER_CTRL");
+			addLabel(0xA4, 2, "IO_HBLANK_TIMER");
+			addLabel(0xA6, 2, "IO_VBLANK_TIMER");
+			addLabel(0xA8, 2, "IO_HBLANK_COUNTER");
+			addLabel(0xAA, 2, "IO_VBLANK_COUNTER");
+			addLabel(0xB0, 1, "IO_HWINT_VECTOR");
+			addLabel(0xB2, 1, "IO_HWINT_ENABLE");
+			addLabel(0xB4, 1, "IO_HWINT_STATUS");
+			addLabel(0xB6, 1, "IO_HWINT_ACK");
+			addLabel(0xB1, 1, "IO_SERIAL_DATA");
+			addLabel(0xB3, 1, "IO_SERIAL_STATUS");
+			addLabel(0xB5, 1, "IO_KEY_SCAN");
+			addLabel(0xB7, 1, "IO_INT_NMI_CTRL");
+			addLabel(0xBA, 2, "IO_IEEP_DATA");
+			addLabel(0xBC, 2, "IO_IEEP_CMD");
+			addLabel(0xBE, 1, "IO_IEEP_CTRL");
+			addLabel(0xC1, 1, "IO_BANK_RAM");
+			addLabel(0xC2, 1, "IO_BANK_ROM0");
+			addLabel(0xC3, 1, "IO_BANK_ROM1");
+			/*addLabel(0xC0, 1, "IO_BANK_ROM_LINEAR");
+			addLabel(0xC4, 1, "IO_CART_EEP_DATA");
+			addLabel(0xC6, 1, "IO_CART_EEP_CMD");
+			addLabel(0xC8, 1, "IO_CART_EEP_CTRL");
+			addLabel(0xCA, 1, "IO_CART_RTC_CTRL");
+			addLabel(0xCB, 1, "IO_CART_RTC_DATA");
+			addLabel(0xCC, 1, "IO_CART_GPO_CTRL");
+			addLabel(0xCD, 1, "IO_CART_GPO_DATA");
+			addLabel(0xCE, 1, "IO_CART_FLASH");
+			addLabel(0xD0, 1, "IO_BANK_2003_RAM");
+			addLabel(0xD2, 1, "IO_BANK_2003_ROM0");
+			addLabel(0xD4, 1, "IO_BANK_2003_ROM1");
+			addLabel(0xD6, 1, "IO_CART_KARNAK_TIMER");
+			addLabel(0xD8, 1, "IO_CART_KARNAK_ADPCM_INPUT");
+			addLabel(0xD9, 1, "IO_CART_KARNAK_ADPCM_OUTPUT");*/
 		}
 	}
 }

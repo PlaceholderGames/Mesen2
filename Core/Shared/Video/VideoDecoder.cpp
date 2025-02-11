@@ -76,11 +76,13 @@ void VideoDecoder::UpdateVideoFilter()
 		_consoleType = consoleType;
 
 		_videoFilter.reset(_emu->GetVideoFilter());
-		_scaleFilter = ScaleFilter::GetScaleFilter(_videoFilterType);
+		_scaleFilter = ScaleFilter::GetScaleFilter(_emu, _videoFilterType);
 		_forceFilterUpdate = false;
 	}
 
 	uint32_t screenRotation = _emu->GetSettings()->GetVideoConfig().ScreenRotation;
+	_emu->GetScreenRotationOverride(screenRotation);
+
 	if(screenRotation != 0) {
 		if(!_rotateFilter || _rotateFilter->GetAngle() != screenRotation) {
 			_rotateFilter.reset(new RotateFilter(screenRotation));
@@ -120,7 +122,7 @@ void VideoDecoder::DecodeFrame(bool forRewind)
 		}
 	}
 
-	_emu->GetDebugHud()->Draw(outputBuffer, frameSize, overscan, _frame.FrameNumber, true);
+	_emu->GetDebugHud()->Draw(outputBuffer, frameSize, overscan, _frame.FrameNumber, _videoFilter->GetScaleFactor());
 
 	if(_scaleFilter && !isAudioPlayer) {
 		outputBuffer = _scaleFilter->ApplyFilter(outputBuffer, frameSize.Width, frameSize.Height);

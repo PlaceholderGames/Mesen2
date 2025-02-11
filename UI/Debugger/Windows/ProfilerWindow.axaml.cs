@@ -18,18 +18,15 @@ namespace Mesen.Debugger.Windows
 	{
 		private ProfilerWindowViewModel _model;
 
-		[Obsolete("For designer only")]
-		public ProfilerWindow() : this(new ProfilerWindowViewModel()) { }
-
-		public ProfilerWindow(ProfilerWindowViewModel model)
+		public ProfilerWindow()
 		{
 			InitializeComponent();
 #if DEBUG
 			this.AttachDevTools();
 #endif
 
-			_model = model;
-			DataContext = model;
+			_model = new ProfilerWindowViewModel(this);
+			DataContext = _model;
 			
 			if(Design.IsDesignMode) {
 				return;
@@ -53,8 +50,14 @@ namespace Mesen.Debugger.Windows
 					});
 					break;
 
+				case ConsoleNotificationType.CodeBreak:
+					if(_model.Config.RefreshOnBreakPause) {
+						_model.RefreshData();
+					}
+					break;
+
 				case ConsoleNotificationType.PpuFrameDone:
-					if(!ToolRefreshHelper.LimitFps(this, 10)) {
+					if(_model.Config.AutoRefresh && !ToolRefreshHelper.LimitFps(this, 10)) {
 						_model.RefreshData();
 					}
 					break;
@@ -82,6 +85,11 @@ namespace Mesen.Debugger.Windows
 		private void OnResetClick(object sender, RoutedEventArgs e)
 		{
 			_model.SelectedTab?.ResetData();
+		}
+
+		private void OnRefreshClick(object sender, RoutedEventArgs e)
+		{
+			_model.RefreshData();
 		}
 
 		private void InitializeComponent()

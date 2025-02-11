@@ -46,6 +46,9 @@ namespace Mesen.Utilities
 				case EmulatorShortcut.IncreaseVolume: IncreaseVolume(); break;
 				case EmulatorShortcut.DecreaseVolume: DecreaseVolume(); break;
 
+				case EmulatorShortcut.PreviousTrack: GoToPreviousTrack(); break;
+				case EmulatorShortcut.NextTrack: GoToNextTrack(); break;
+
 				case EmulatorShortcut.ToggleFps: ToggleFps(); break;
 				case EmulatorShortcut.ToggleGameTimer: ToggleGameTimer(); break;
 				case EmulatorShortcut.ToggleFrameCounter: ToggleFrameCounter(); break;
@@ -279,6 +282,16 @@ namespace Mesen.Utilities
 					}
 					break;
 
+				case ConsoleType.Gba:
+					switch(layer) {
+						case VideoLayer.Bg1: return (() => ConfigManager.Config.Gba.HideBgLayer1, (val) => ConfigManager.Config.Gba.HideBgLayer1 = val);
+						case VideoLayer.Bg2: return (() => ConfigManager.Config.Gba.HideBgLayer2, (val) => ConfigManager.Config.Gba.HideBgLayer2 = val);
+						case VideoLayer.Bg3: return (() => ConfigManager.Config.Gba.HideBgLayer3, (val) => ConfigManager.Config.Gba.HideBgLayer3 = val);
+						case VideoLayer.Bg4: return (() => ConfigManager.Config.Gba.HideBgLayer4, (val) => ConfigManager.Config.Gba.HideBgLayer4 = val);
+						case VideoLayer.Sprite1: return (() => ConfigManager.Config.Gba.DisableSprites, (val) => ConfigManager.Config.Gba.DisableSprites = val);
+					}
+					break;
+
 				case ConsoleType.PcEngine:
 					switch(layer) {
 						case VideoLayer.Bg1: return (() => ConfigManager.Config.PcEngine.DisableBackground, (val) => ConfigManager.Config.PcEngine.DisableBackground = val);
@@ -289,9 +302,24 @@ namespace Mesen.Utilities
 					break;
 
 				case ConsoleType.Sms:
+					if(MainWindowViewModel.Instance.RomInfo.Format == RomFormat.ColecoVision) {
+						switch(layer) {
+							case VideoLayer.Bg1: return (() => ConfigManager.Config.Cv.DisableBackground, (val) => ConfigManager.Config.Cv.DisableBackground = val);
+							case VideoLayer.Sprite1: return (() => ConfigManager.Config.Cv.DisableSprites, (val) => ConfigManager.Config.Cv.DisableSprites = val);
+						}
+					} else {
+						switch(layer) {
+							case VideoLayer.Bg1: return (() => ConfigManager.Config.Sms.DisableBackground, (val) => ConfigManager.Config.Sms.DisableBackground = val);
+							case VideoLayer.Sprite1: return (() => ConfigManager.Config.Sms.DisableSprites, (val) => ConfigManager.Config.Sms.DisableSprites = val);
+						}
+					}
+					break;
+
+				case ConsoleType.Ws:
 					switch(layer) {
-						case VideoLayer.Bg1: return (() => ConfigManager.Config.Sms.DisableBackground, (val) => ConfigManager.Config.Sms.DisableBackground = val);
-						case VideoLayer.Sprite1: return (() => ConfigManager.Config.Sms.DisableSprites, (val) => ConfigManager.Config.Sms.DisableSprites = val);
+						case VideoLayer.Bg1: return (() => ConfigManager.Config.Ws.HideBgLayer1, (val) => ConfigManager.Config.Ws.HideBgLayer1 = val);
+						case VideoLayer.Bg2: return (() => ConfigManager.Config.Ws.HideBgLayer2, (val) => ConfigManager.Config.Ws.HideBgLayer2 = val);
+						case VideoLayer.Sprite1: return (() => ConfigManager.Config.Ws.DisableSprites, (val) => ConfigManager.Config.Ws.DisableSprites = val);
 					}
 					break;
 			}
@@ -309,11 +337,7 @@ namespace Mesen.Utilities
 			if(get != null && set != null) {
 				set(!get());
 				DisplayMessageHelper.DisplayMessage("Debug", ResourceHelper.GetMessage(get() ? "VideoLayerDisabled" : "VideoLayerEnabled", ResourceHelper.GetEnumText(layer)));
-				ConfigManager.Config.Snes.ApplyConfig();
-				ConfigManager.Config.Nes.ApplyConfig();
-				ConfigManager.Config.Gameboy.ApplyConfig();
-				ConfigManager.Config.PcEngine.ApplyConfig();
-				ConfigManager.Config.Sms.ApplyConfig();
+				UpdateAllCoreConfig();
 			}
 		}
 
@@ -328,19 +352,34 @@ namespace Mesen.Utilities
 			ConfigManager.Config.Nes.DisableSprites = false;
 			ConfigManager.Config.Gameboy.DisableBackground = false;
 			ConfigManager.Config.Gameboy.DisableSprites = false;
+			ConfigManager.Config.Gba.HideBgLayer1 = false;
+			ConfigManager.Config.Gba.HideBgLayer2 = false;
+			ConfigManager.Config.Gba.HideBgLayer3 = false;
+			ConfigManager.Config.Gba.HideBgLayer4 = false;
+			ConfigManager.Config.Gba.DisableSprites = false;
 			ConfigManager.Config.PcEngine.DisableBackground = false;
 			ConfigManager.Config.PcEngine.DisableBackgroundVdc2 = false;
 			ConfigManager.Config.PcEngine.DisableSprites = false;
 			ConfigManager.Config.PcEngine.DisableSpritesVdc2 = false;
 			ConfigManager.Config.Sms.DisableBackground = false;
 			ConfigManager.Config.Sms.DisableSprites = false;
+			ConfigManager.Config.Ws.HideBgLayer1 = false;
+			ConfigManager.Config.Ws.HideBgLayer2 = false;
+			ConfigManager.Config.Ws.DisableSprites = false;
+			UpdateAllCoreConfig();
+			DisplayMessageHelper.DisplayMessage("Debug", ResourceHelper.GetMessage("AllLayersEnabled"));
+		}
+
+		private void UpdateAllCoreConfig()
+		{
 			ConfigManager.Config.Snes.ApplyConfig();
 			ConfigManager.Config.Nes.ApplyConfig();
 			ConfigManager.Config.Gameboy.ApplyConfig();
+			ConfigManager.Config.Gba.ApplyConfig();
 			ConfigManager.Config.PcEngine.ApplyConfig();
 			ConfigManager.Config.Sms.ApplyConfig();
-
-			DisplayMessageHelper.DisplayMessage("Debug", ResourceHelper.GetMessage("AllLayersEnabled"));
+			ConfigManager.Config.Cv.ApplyConfig();
+			ConfigManager.Config.Ws.ApplyConfig();
 		}
 
 		private void SetEmulationSpeed(uint emulationSpeed)
@@ -420,14 +459,38 @@ namespace Mesen.Utilities
 
 		private void IncreaseVolume()
 		{
-			ConfigManager.Config.Audio.MasterVolume = (uint)Math.Min(100, (int)ConfigManager.Config.Audio.MasterVolume + 5);
-			ConfigManager.Config.Audio.ApplyConfig();
+			if(MainWindowModel.AudioPlayer == null) {
+				ConfigManager.Config.Audio.MasterVolume = (uint)Math.Min(100, (int)ConfigManager.Config.Audio.MasterVolume + 5);
+				ConfigManager.Config.Audio.ApplyConfig();
+			} else {
+				ConfigManager.Config.AudioPlayer.Volume = (uint)Math.Min(100, (int)ConfigManager.Config.AudioPlayer.Volume + 5);
+				ConfigManager.Config.AudioPlayer.ApplyConfig();
+			}
 		}
 
 		private void DecreaseVolume()
 		{
-			ConfigManager.Config.Audio.MasterVolume = (uint)Math.Max(0, (int)ConfigManager.Config.Audio.MasterVolume - 5);
-			ConfigManager.Config.Audio.ApplyConfig();
+			if(MainWindowModel.AudioPlayer == null) {
+				ConfigManager.Config.Audio.MasterVolume = (uint)Math.Max(0, (int)ConfigManager.Config.Audio.MasterVolume - 5);
+				ConfigManager.Config.Audio.ApplyConfig();
+			} else {
+				ConfigManager.Config.AudioPlayer.Volume = (uint)Math.Max(0, (int)ConfigManager.Config.AudioPlayer.Volume - 5);
+				ConfigManager.Config.AudioPlayer.ApplyConfig();
+			}
+		}
+
+		private void GoToPreviousTrack()
+		{
+			if(MainWindowModel.AudioPlayer != null) {
+				EmuApi.ProcessAudioPlayerAction(new AudioPlayerActionParams() { Action = AudioPlayerAction.PrevTrack });
+			}
+		}
+
+		private void GoToNextTrack()
+		{
+			if(MainWindowModel.AudioPlayer != null) {
+				EmuApi.ProcessAudioPlayerAction(new AudioPlayerActionParams() { Action = AudioPlayerAction.NextTrack });
+			}
 		}
 
 		private void ToggleFrameCounter()

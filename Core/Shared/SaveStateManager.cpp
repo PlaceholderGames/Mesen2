@@ -90,10 +90,10 @@ bool SaveStateManager::SaveState(string filepath, bool showSuccessMessage)
 		{
 			auto lock = _emu->AcquireLock();
 			SaveState(file);
+			_emu->ProcessEvent(EventType::StateSaved);
 		}
 		file.close();
 
-		_emu->ProcessEvent(EventType::StateSaved);
 		if(showSuccessMessage) {
 			MessageManager::DisplayMessage("SaveStates", "SaveStateSavedFile", filepath);
 		}
@@ -199,7 +199,9 @@ bool SaveStateManager::LoadState(istream &stream)
 		stream.read(nameBuffer.data(), nameBuffer.size());
 		string romName(nameBuffer.data(), nameLength);
 
-		if(_emu->Deserialize(stream, fileFormatVersion, false, stateConsoleType)) {
+		DeserializeResult result = _emu->Deserialize(stream, fileFormatVersion, false, stateConsoleType);
+
+		if(result == DeserializeResult::Success) {
 			//Stop any movie that might have been playing/recording if a state is loaded
 			//(Note: Loading a state is disabled in the UI while a movie is playing/recording)
 			_emu->GetMovieManager()->Stop();
@@ -211,6 +213,8 @@ bool SaveStateManager::LoadState(istream &stream)
 				_emu->GetVideoDecoder()->UpdateFrame(frame, true, false);
 			}
 			return true;
+		} else if(result == DeserializeResult::SpecificError) {
+			return false;
 		}
 	}
 
@@ -227,11 +231,13 @@ bool SaveStateManager::LoadState(string filepath, bool showSuccessMessage)
 		{
 			auto lock = _emu->AcquireLock();
 			result = LoadState(file);
+			if(result) {
+				_emu->ProcessEvent(EventType::StateLoaded);
+			}
 		}
 		file.close();
 
 		if(result) {
-			_emu->ProcessEvent(EventType::StateLoaded);
 			if(showSuccessMessage) {
 				MessageManager::DisplayMessage("SaveStates", "SaveStateLoadedFile", filepath);
 			}

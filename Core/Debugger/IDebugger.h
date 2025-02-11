@@ -39,7 +39,8 @@ public:
 	bool CheckStepBack() { return _stepBackManager->CheckStepBack(); }
 	bool IsStepBack() { return _stepBackManager->IsRewinding(); }
 	void ResetStepBackCache() { return _stepBackManager->ResetCache(); }
-	void StepBack() { return _stepBackManager->StepBack(); }
+	void StepBack(int32_t stepCount) { return _stepBackManager->StepBack((StepBackType)stepCount); }
+	virtual StepBackConfig GetStepBackConfig() { return { GetCpuCycleCount(), 0, 0 }; }
 
 	FrozenAddressManager& GetFrozenAddressManager() { return _frozenAddressManager; }
 
@@ -58,9 +59,11 @@ public:
 	virtual void DrawPartialFrame() { }
 
 	virtual DebuggerFeatures GetSupportedFeatures() { return {}; }
-	virtual uint64_t GetCpuCycleCount() { return 0; }
+	virtual uint64_t GetCpuCycleCount(bool forProfiler = false) { return 0; }
 	virtual uint32_t GetProgramCounter(bool getInstPc) = 0;
 	virtual void SetProgramCounter(uint32_t addr, bool updateDebuggerOnly = false) = 0;
+
+	virtual uint8_t GetCpuFlags() { return 0; }
 
 	virtual BreakpointManager* GetBreakpointManager() = 0;
 	virtual CallstackManager* GetCallstackManager() = 0;
@@ -68,6 +71,8 @@ public:
 	virtual BaseEventManager* GetEventManager() = 0;
 	virtual ITraceLogger* GetTraceLogger() = 0;
 	virtual PpuTools* GetPpuTools() { return nullptr; }
+
+	virtual void GetRomHeader(uint8_t* headerData, uint32_t& size) {}
 
 	virtual BaseState& GetState() = 0;
 	virtual void GetPpuState(BaseState& state) {};

@@ -79,7 +79,7 @@ SnesDebugger::SnesDebugger(Debugger* debugger, CpuType cpuType) : IDebugger(debu
 	
 	_stepBackManager.reset(new StepBackManager(_emu, this));
 	_eventManager.reset(new SnesEventManager(debugger, _cpu, console->GetPpu(), _memoryManager, console->GetDmaController()));
-	_callstackManager.reset(new CallstackManager(debugger, console));
+	_callstackManager.reset(new CallstackManager(debugger, this));
 	_breakpointManager.reset(new BreakpointManager(debugger, this, cpuType, _eventManager.get()));
 	_step.reset(new StepRequest());
 	_assembler.reset(new SnesAssembler(_debugger->GetLabelManager()));
@@ -120,9 +120,13 @@ void SnesDebugger::ProcessConfigChange()
 	_needCoprocessors = _runSpc || _runCoprocessors;
 }
 
-uint64_t SnesDebugger::GetCpuCycleCount()
+uint64_t SnesDebugger::GetCpuCycleCount(bool forProfiler)
 {
-	return GetCpuState().CycleCount;
+	if(forProfiler && _cpuType == CpuType::Snes) {
+		return _memoryManager->GetMasterClock();
+	} else {
+		return GetCpuState().CycleCount;
+	}
 }
 
 void SnesDebugger::ResetPrevOpCode()
@@ -150,9 +154,9 @@ void SnesDebugger::ProcessInstruction()
 		}
 	}
 
-	ProcessCallStackUpdates(addressInfo, pc, state.PS);
+	ProcessCallStackUpdates(addressInfo, pc, state.PS, state.SP);
 
-	if(_step->BreakAddress == (int32_t)pc && (SnesDisUtils::IsReturnInstruction(_prevOpCode) || _prevOpCode == 0x44 || _prevOpCode == 0x54)) {
+	if(_step->BreakAddress == (int32_t)pc && _step->BreakStackPointer == state.SP && (SnesDisUtils::IsReturnInstruction(_prevOpCode) || _prevOpCode == 0x44 || _prevOpCode == 0x54)) {
 		//RTS/RTL/RTI found, if we're on the expected return address, break immediately (for step over/step out)
 		//Also used for MVN/MVP
 		_step->Break(BreakSource::CpuStep);
@@ -160,6 +164,7 @@ void SnesDebugger::ProcessInstruction()
 
 	_prevOpCode = opCode;
 	_prevProgramCounter = pc;
+	_prevStackPointer = state.SP;
 
 	_step->ProcessCpuExec();
 
@@ -298,11 +303,16 @@ void SnesDebugger::Step(int32_t stepCount, StepType type)
 	StepRequest step(type);
 	switch(type) {
 		case StepType::Step: step.StepCount = stepCount; break;
-		case StepType::StepOut: step.BreakAddress = _callstackManager->GetReturnAddress(); break;
+		case StepType::StepOut:
+			step.BreakAddress = _callstackManager->GetReturnAddress();
+			step.BreakStackPointer = _callstackManager->GetReturnStackPointer();
+			break;
+
 		case StepType::StepOver:
 			if(_prevOpCode == 0x20 || _prevOpCode == 0x22 || _prevOpCode == 0xFC || _prevOpCode == 0x00 || _prevOpCode == 0x02 || _prevOpCode == 0x44 || _prevOpCode == 0x54) {
 				//JSR, JSL, BRK, COP, MVP, MVN
 				step.BreakAddress = (_prevProgramCounter & 0xFF0000) | (((_prevProgramCounter & 0xFFFF) + SnesDisUtils::GetOpSize(_prevOpCode, 0)) & 0xFFFF);
+				step.BreakStackPointer = _prevStackPointer;
 			} else {
 				//For any other instruction, step over is the same as step into
 				step.StepCount = 1;
@@ -318,12 +328,25 @@ void SnesDebugger::Step(int32_t stepCount, StepType type)
 	_step.reset(new StepRequest(step));
 }
 
+StepBackConfig SnesDebugger::GetStepBackConfig()
+{
+	if(_cpuType == CpuType::Snes) {
+		return {
+			_memoryManager->GetMasterClock(),
+			1364,
+			1364u * (_ppu->GetVblankEndScanline() + 1)
+		};
+	} else {
+		return IDebugger::GetStepBackConfig();
+	}
+}
+
 void SnesDebugger::DrawPartialFrame()
 {
 	_ppu->DebugSendFrame();
 }
 
-void SnesDebugger::ProcessCallStackUpdates(AddressInfo& destAddr, uint32_t destPc, uint8_t cpuFlags)
+void SnesDebugger::ProcessCallStackUpdates(AddressInfo& destAddr, uint32_t destPc, uint8_t cpuFlags, uint16_t sp)
 {
 	if(SnesDisUtils::IsJumpToSub(_prevOpCode)) {
 		//JSR, JSL
@@ -331,16 +354,15 @@ void SnesDebugger::ProcessCallStackUpdates(AddressInfo& destAddr, uint32_t destP
 		uint32_t returnPc = (_prevProgramCounter & 0xFF0000) | (((_prevProgramCounter & 0xFFFF) + opSize) & 0xFFFF);
 		AddressInfo srcAddress = _memoryMappings->GetAbsoluteAddress(_prevProgramCounter);
 		AddressInfo retAddress = _memoryMappings->GetAbsoluteAddress(returnPc);
-		_callstackManager->Push(srcAddress, _prevProgramCounter, destAddr, destPc, retAddress, returnPc, StackFrameFlags::None);
+		_callstackManager->Push(srcAddress, _prevProgramCounter, destAddr, destPc, retAddress, returnPc, _prevStackPointer, StackFrameFlags::None);
 	} else if(SnesDisUtils::IsReturnInstruction(_prevOpCode)) {
 		//RTS, RTL, RTI
-		_callstackManager->Pop(destAddr, destPc);
+		_callstackManager->Pop(destAddr, destPc, sp);
 	}
 }
 
 void SnesDebugger::ProcessInterrupt(uint32_t originalPc, uint32_t currentPc, bool forNmi)
 {
-	AddressInfo src = _memoryMappings->GetAbsoluteAddress(_prevProgramCounter);
 	AddressInfo ret = _memoryMappings->GetAbsoluteAddress(originalPc);
 	AddressInfo dest = _memoryMappings->GetAbsoluteAddress(currentPc);
 
@@ -348,13 +370,19 @@ void SnesDebugger::ProcessInterrupt(uint32_t originalPc, uint32_t currentPc, boo
 		_cdl->SetCode(dest.Address, CdlFlags::SubEntryPoint);
 	}
 
+	//This assumes that the CPU is never running in emulation mode,
+	//which is almost always true. This doesn't need to be perfect since
+	//it only has minor impacts on the debugger (with step out/over)
+	uint16_t originalSp = GetCpuState().SP + 4;
+	_prevStackPointer = originalSp;
+
 	//If a call/return occurred just before IRQ, it needs to be processed now
-	ProcessCallStackUpdates(ret, originalPc, GetCpuState().PS);
+	ProcessCallStackUpdates(ret, originalPc, GetCpuState().PS, originalSp);
 	ResetPrevOpCode();
 
 	_debugger->InternalProcessInterrupt(
 		_cpuType, *this, *_step.get(),
-		src, _prevProgramCounter, dest, currentPc, ret, originalPc, forNmi
+		ret, originalPc, dest, currentPc, ret, originalPc, originalSp, forNmi
 	);
 }
 
@@ -450,11 +478,17 @@ void SnesDebugger::SetProgramCounter(uint32_t addr, bool updateDebuggerOnly)
 	
 	_prevOpCode = _memoryMappings->Peek(addr);
 	_prevProgramCounter = addr;
+	_prevStackPointer = GetCpuState().SP;
 }
 
 uint32_t SnesDebugger::GetProgramCounter(bool getInstPc)
 {
 	return getInstPc ? _prevProgramCounter : ((GetCpuState().K << 16) | GetCpuState().PC);
+}
+
+uint8_t SnesDebugger::GetCpuFlags()
+{
+	return GetCpuState().PS & (ProcFlags::IndexMode8 | ProcFlags::MemoryMode8);
 }
 
 CallstackManager* SnesDebugger::GetCallstackManager()

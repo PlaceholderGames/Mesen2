@@ -58,19 +58,17 @@ namespace Mesen.Debugger.ViewModels
 			switch(behavior ?? Config.ScriptStartupBehavior) {
 				case ScriptStartupBehavior.ShowBlankWindow: break;
 				case ScriptStartupBehavior.ShowTutorial: LoadScriptFromResource("Mesen.Debugger.Utilities.LuaScripts.Example.lua"); break;
-				case ScriptStartupBehavior.LoadLastScript: LoadScript(Config.RecentScripts[0]); break;
+				case ScriptStartupBehavior.LoadLastScript:
+					if(Config.RecentScripts.Count > 0) {
+						LoadScript(Config.RecentScripts[0]);
+					}
+					break;
 			}
 		}
 
 		public void InitActions(ScriptWindow wnd)
 		{
 			_wnd = wnd;
-
-			_recentScriptsAction = new ContextMenuAction() {
-				ActionType = ActionType.RecentScripts,
-				SubActions = new()
-			};
-			_recentScriptsAction.IsEnabled = () => _recentScriptsAction.SubActions.Count > 0;
 
 			ScriptMenuActions = GetScriptMenuActions();
 			ToolbarActions = GetToolbarActions();
@@ -86,7 +84,22 @@ namespace Mesen.Debugger.ViewModels
 					ActionType = ActionType.BuiltInScripts,
 					SubActions = GetBuiltInScriptActions()
 				},
-				_recentScriptsAction,
+				new ContextMenuAction() {
+					ActionType = ActionType.RecentScripts,
+					IsEnabled = () => ConfigManager.Config.Debug.ScriptWindow.RecentScripts.Count > 0,
+					SubActions = new() {
+						GetRecentMenuItem(0),
+						GetRecentMenuItem(1),
+						GetRecentMenuItem(2),
+						GetRecentMenuItem(3),
+						GetRecentMenuItem(4),
+						GetRecentMenuItem(5),
+						GetRecentMenuItem(6),
+						GetRecentMenuItem(7),
+						GetRecentMenuItem(8),
+						GetRecentMenuItem(9)
+					}
+				},
 				new ContextMenuSeparator(),
 				new ContextMenuAction() {
 					ActionType = ActionType.Exit,
@@ -97,13 +110,31 @@ namespace Mesen.Debugger.ViewModels
 			HelpMenuActions = new() {
 				new ContextMenuAction() {
 					ActionType = ActionType.HelpApiReference,
-					OnClick = () => ApplicationHelper.OpenBrowser("https://www.mesen.ca/apireference/")
+					OnClick = () => {
+						string tmpDoc = Path.Combine(ConfigManager.HomeFolder, "MesenLuaApiDoc.html");
+						if(FileHelper.WriteAllText(tmpDoc, CodeCompletionHelper.GenerateHtmlDocumentation())) {
+							ApplicationHelper.OpenBrowser(tmpDoc);
+						}
+					}
 				}
 			};
 
-			UpdateRecentScriptsMenu();
 			DebugShortcutManager.RegisterActions(_wnd, ScriptMenuActions);
 			DebugShortcutManager.RegisterActions(_wnd, FileMenuActions);
+		}
+
+		private MainMenuAction GetRecentMenuItem(int index)
+		{
+			return new MainMenuAction() {
+				ActionType = ActionType.Custom,
+				DynamicText = () => index < ConfigManager.Config.Debug.ScriptWindow.RecentScripts.Count ? ConfigManager.Config.Debug.ScriptWindow.RecentScripts[index] : "",
+				IsVisible = () => index < ConfigManager.Config.Debug.ScriptWindow.RecentScripts.Count,
+				OnClick = () => {
+					if(index < ConfigManager.Config.Debug.ScriptWindow.RecentScripts.Count) {
+						LoadScript(ConfigManager.Config.Debug.ScriptWindow.RecentScripts[index]);
+					}
+				}
+			};
 		}
 
 		private List<ContextMenuAction> GetSharedFileActions()
@@ -181,7 +212,8 @@ namespace Mesen.Debugger.ViewModels
 				await SaveScript();
 			}
 
-			UpdateScriptId(DebugApi.LoadScript(ScriptName.Length == 0 ? "DefaultName" : ScriptName, Code, ScriptId));
+			string path = (Path.GetDirectoryName(FilePath) ?? Program.OriginalFolder) + Path.DirectorySeparatorChar;
+			UpdateScriptId(DebugApi.LoadScript(ScriptName.Length == 0 ? "DefaultName" : ScriptName, path, Code, ScriptId));
 		}
 
 		private void UpdateScriptId(int scriptId)
@@ -224,7 +256,8 @@ namespace Mesen.Debugger.ViewModels
 		public void RestartScript()
 		{
 			DebugApi.RemoveScript(ScriptId);
-			UpdateScriptId(DebugApi.LoadScript(ScriptName.Length == 0 ? "DefaultName" : ScriptName, Code, -1));
+			string path = (Path.GetDirectoryName(FilePath) ?? Program.OriginalFolder) + Path.DirectorySeparatorChar;
+			UpdateScriptId(DebugApi.LoadScript(ScriptName.Length == 0 ? "DefaultName" : ScriptName, path, Code, -1));
 		}
 
 		private string? InitialFolder
@@ -236,15 +269,6 @@ namespace Mesen.Debugger.ViewModels
 				}
 				return null;
 			}
-		}
-
-		private void UpdateRecentScriptsMenu()
-		{
-			_recentScriptsAction.SubActions = ConfigManager.Config.Debug.ScriptWindow.RecentScripts.Select(x => new ContextMenuAction() {
-				ActionType = ActionType.Custom,
-				CustomText = x,
-				OnClick = () => LoadScript(x)
-			}).ToList<object>();
 		}
 
 		private async void OpenScript()
@@ -262,7 +286,6 @@ namespace Mesen.Debugger.ViewModels
 		private void AddRecentScript(string filename)
 		{
 			ConfigManager.Config.Debug.ScriptWindow.AddRecentScript(filename);
-			UpdateRecentScriptsMenu();
 		}
 
 		private void LoadScriptFromString(string scriptContent)

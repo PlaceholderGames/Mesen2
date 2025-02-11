@@ -55,6 +55,13 @@ struct PceVdcHvLatches
 	//R08 - BYR
 	uint16_t BgScrollY;
 
+	//R09 - MWR - Memory Width
+	uint8_t ColumnCount;
+	uint8_t RowCount;
+	uint8_t SpriteAccessMode;
+	uint8_t VramAccessMode;
+	bool CgMode;
+
 	//R0A - HSR
 	uint8_t HorizDisplayStart;
 	uint8_t HorizSyncWidth;
@@ -107,13 +114,6 @@ struct PceVdcState
 
 	//R06 - RCR
 	uint16_t RasterCompareRegister;
-
-	//R09 - MWR - Memory Width
-	uint8_t ColumnCount;
-	uint8_t RowCount;
-	uint8_t SpriteAccessMode;
-	uint8_t VramAccessMode;
-	bool CgMode;
 
 	bool BgScrollYUpdatePending;
 
@@ -300,17 +300,18 @@ enum class PceCdRomIrqSource
 {
 	Adpcm = 0x04,
 	Stop = 0x08,
-	SubChannel = 0x10,
 	DataTransferDone = 0x20,
 	DataTransferReady = 0x40
 };
 
 struct PceCdRomState
 {
+	uint16_t AudioSampleLatch = 0;
 	uint8_t ActiveIrqs = 0;
 	uint8_t EnabledIrqs = 0;
 	bool ReadRightChannel = false;
 	bool BramLocked = false;
+	uint8_t ResetRegValue = 0;
 };
 
 struct PceAdpcmState
@@ -325,7 +326,7 @@ struct PceAdpcmState
 	uint8_t Control;
 	uint8_t PlaybackRate;
 
-	uint16_t AdpcmLength;
+	uint32_t AdpcmLength;
 	bool EndReached;
 	bool HalfReached;
 
@@ -373,9 +374,9 @@ enum class ScsiPhase
 	BusFree,
 	Command,
 	DataIn,
-	DataOut,
+	DataOut, //unused
 	MessageIn,
-	MessageOut,
+	MessageOut, //unused
 	Status
 };
 
@@ -384,12 +385,10 @@ struct PceScsiBusState
 	bool Signals[9];
 	ScsiPhase Phase;
 
-	bool StatusDone;
 	bool MessageDone;
-	uint8_t MessageData;
 	uint8_t DataPort;
+	uint8_t ReadDataPort;
 
-	bool DataTransferDone;
 	uint32_t Sector;
 	uint8_t SectorsToRead;
 };
@@ -406,6 +405,7 @@ struct PceAudioFaderState
 	PceAudioFaderTarget Target;
 	bool FastFade;
 	bool Enabled;
+	uint8_t RegValue;
 };
 
 struct PceState

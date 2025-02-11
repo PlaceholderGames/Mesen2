@@ -69,15 +69,21 @@ void VideoRenderer::StopThread()
 
 void VideoRenderer::RenderThread()
 {
+	if(_renderer) {
+		_renderer->OnRendererThreadStarted();
+	}
+
 	while(!_stopFlag.load()) {
 		//Wait until a frame is ready, or until 32ms have passed (to allow HUD to update at ~30fps when paused)
-		bool forceRender = _waitForRender.Wait(32);
+		bool forceRender = !_waitForRender.Wait(32);
 		if(_renderer) {
 			FrameInfo size = _emu->GetVideoDecoder()->GetBaseFrameInfo(true);
 			_scriptHudSurface.UpdateSize(size.Width * _scriptHudScale, size.Height * _scriptHudScale);
 
 			size = GetEmuHudSize(size);
-			_emuHudSurface.UpdateSize(size.Width, size.Height);
+			if(_emuHudSurface.UpdateSize(size.Width, size.Height)) {
+				_rendererHud->ClearScreen();
+			}
 
 			RenderedFrame frame;
 			{
@@ -91,7 +97,7 @@ void VideoRenderer::RenderThread()
 				_systemHud->Draw(_rendererHud.get(), size.Width, size.Height);
 			}
 			
-			_emuHudSurface.IsDirty = _rendererHud->Draw(_emuHudSurface.Buffer, size, {}, 0, false, 0, true);
+			_emuHudSurface.IsDirty = _rendererHud->Draw(_emuHudSurface.Buffer, size, {}, 0, {}, true);
 			_scriptHudSurface.IsDirty = DrawScriptHud(frame);
 
 			if(forceRender || _needRedraw || _emuHudSurface.IsDirty || _scriptHudSurface.IsDirty) {
@@ -133,7 +139,7 @@ bool VideoRenderer::DrawScriptHud(RenderedFrame& frame)
 
 		if(_emu->GetScriptHud()->HasCommands()) {
 			auto [size, overscan] = GetScriptHudSize();
-			_emu->GetScriptHud()->Draw(_scriptHudSurface.Buffer, size, overscan, frame.FrameNumber, false);
+			_emu->GetScriptHud()->Draw(_scriptHudSurface.Buffer, size, overscan, frame.FrameNumber, {});
 			_needScriptHudClear = true;
 			_lastScriptHudFrameNumber = frame.FrameNumber;
 			needRedraw = true;
@@ -226,7 +232,7 @@ void VideoRenderer::ProcessAviRecording(RenderedFrame& frame)
 			}
 
 			FrameInfo frameSize = { frame.Width, frame.Height };
-			hud.Draw((uint32_t*)_aviRecorderSurface.Buffer, frameSize, {}, frame.FrameNumber, false, scale);
+			hud.Draw((uint32_t*)_aviRecorderSurface.Buffer, frameSize, {}, frame.FrameNumber, { scale, scale });
 
 			//Record the final result
 			if(!recorder->AddFrame(_aviRecorderSurface.Buffer, frame.Width, frame.Height, _emu->GetFps())) {

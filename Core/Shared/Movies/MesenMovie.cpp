@@ -38,17 +38,16 @@ void MesenMovie::Stop()
 			MessageManager::DisplayMessage("Movies", isEndOfMovie ? "MovieEnded" : "MovieStopped");
 		}
 
-		if(!_emu->IsEmulationThread()) {
-			EmuSettings* settings = _emu->GetSettings();
-			if(isEndOfMovie && settings->GetPreferences().PauseOnMovieEnd) {
-				_emu->Pause();
-			}
-			_emu->GetCheatManager()->SetCheats(_originalCheats);
-
-			Serializer backup(0, false);
-			backup.LoadFrom(_emuSettingsBackup);
-			backup.Stream(*settings, "", -1);
+		EmuSettings* settings = _emu->GetSettings();
+		if(isEndOfMovie && settings->GetPreferences().PauseOnMovieEnd) {
+			_emu->PauseOnNextFrame();
 		}
+
+		_emu->GetCheatManager()->SetCheats(_originalCheats);
+
+		Serializer backup(0, false);
+		backup.LoadFrom(_emuSettingsBackup);
+		backup.Stream(*settings, "", -1);
 
 		_playing = false;
 	}
@@ -60,7 +59,12 @@ void MesenMovie::Stop()
 bool MesenMovie::SetInput(BaseControlDevice *device)
 {
 	uint32_t inputRowIndex = _controlManager->GetPollCounter();
-	_lastPollCounter = inputRowIndex;
+
+	if(_lastPollCounter != inputRowIndex) {
+		_lastPollCounter = inputRowIndex;
+		assert(_deviceIndex == 0);
+		_deviceIndex = 0;
+	}
 
 	if(_inputData.size() > inputRowIndex && _inputData[inputRowIndex].size() > _deviceIndex) {
 		device->SetTextState(_inputData[inputRowIndex][_deviceIndex]);
@@ -224,6 +228,7 @@ bool MesenMovie::ApplySettings(istream& settingsData)
 	s.Stream(consoleType, "emu.consoleType", -1);
 
 	if(consoleType != _emu->GetConsoleType()) {
+		MessageManager::DisplayMessage("Movies", "MovieIncorrectConsole", string(magic_enum::enum_name<ConsoleType>(consoleType)));
 		return false;
 	}
 

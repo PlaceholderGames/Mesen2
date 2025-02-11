@@ -1,10 +1,12 @@
 ﻿using Avalonia.Collections;
 using Avalonia.Controls;
 using Avalonia.Controls.Selection;
+using Avalonia.VisualTree;
 using Avalonia.Threading;
 using DataBoxControl;
 using Mesen.Config;
 using Mesen.Debugger.Labels;
+using Mesen.Debugger.Utilities;
 using Mesen.Interop;
 using Mesen.Localization;
 using Mesen.Utilities;
@@ -15,17 +17,21 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Linq;
 
 namespace Mesen.Debugger.ViewModels
 {
-	public class ProfilerWindowViewModel : ViewModelBase
+	public class ProfilerWindowViewModel : DisposableViewModel
 	{
 		[Reactive] public List<ProfilerTab> ProfilerTabs { get; set; } = new List<ProfilerTab>();
 		[Reactive] public ProfilerTab? SelectedTab { get; set; } = null;
+		
+		public List<object> FileMenuActions { get; } = new();
+		public List<object> ViewMenuActions { get; } = new();
 
 		public ProfilerConfig Config { get; }
 
-		public ProfilerWindowViewModel()
+		public ProfilerWindowViewModel(Window? wnd)
 		{
 			Config = ConfigManager.Config.Debug.Profiler;
 
@@ -35,10 +41,68 @@ namespace Mesen.Debugger.ViewModels
 
 			UpdateAvailableTabs();
 
-			this.WhenAnyValue(x => x.SelectedTab).Subscribe(x => {
+			AddDisposable(this.WhenAnyValue(x => x.SelectedTab).Subscribe(x => {
 				if(SelectedTab != null && EmuApi.IsPaused()) {
 					RefreshData();
 				}
+			}));
+
+			FileMenuActions = AddDisposables(new List<object>() {
+				new ContextMenuAction() {
+					ActionType = ActionType.ResetProfilerData,
+					OnClick = () => SelectedTab?.ResetData()
+				},
+				new ContextMenuAction() {
+					ActionType = ActionType.CopyToClipboard,
+					Shortcut = () => ConfigManager.Config.Debug.Shortcuts.Get(DebuggerShortcut.Copy),
+					OnClick = () => wnd?.GetVisualDescendants().Where(a => a is DataBox).Cast<DataBox>().FirstOrDefault()?.CopyToClipboard()
+				},
+				new ContextMenuSeparator(),
+				new ContextMenuAction() {
+					ActionType = ActionType.Exit,
+					OnClick = () => wnd?.Close()
+				}
+			});
+
+			ViewMenuActions = AddDisposables(new List<object>() {
+				new ContextMenuAction() {
+					ActionType = ActionType.Refresh,
+					Shortcut = () => ConfigManager.Config.Debug.Shortcuts.Get(DebuggerShortcut.Refresh),
+					OnClick = () => RefreshData()
+				},
+				new ContextMenuSeparator(),
+				new ContextMenuAction() {
+					ActionType = ActionType.EnableAutoRefresh,
+					IsSelected = () => Config.AutoRefresh,
+					OnClick = () => Config.AutoRefresh = !Config.AutoRefresh
+				},
+				new ContextMenuAction() {
+					ActionType = ActionType.RefreshOnBreakPause,
+					IsSelected = () => Config.RefreshOnBreakPause,
+					OnClick = () => Config.RefreshOnBreakPause = !Config.RefreshOnBreakPause
+				}
+			});
+
+			if(Design.IsDesignMode || wnd == null) {
+				return;
+			}
+
+			DebugShortcutManager.RegisterActions(wnd, FileMenuActions);
+			DebugShortcutManager.RegisterActions(wnd, ViewMenuActions);
+
+			LabelManager.OnLabelUpdated += LabelManager_OnLabelUpdated;
+		}
+
+		protected override void DisposeView()
+		{
+			LabelManager.OnLabelUpdated -= LabelManager_OnLabelUpdated;
+		}
+
+		private void LabelManager_OnLabelUpdated(object? sender, EventArgs e)
+		{
+			ProfilerTab tab = (SelectedTab ?? ProfilerTabs[0]);
+			Dispatcher.UIThread.Post(() => {
+				tab?.RefreshGrid();
 			});
 		}
 
@@ -75,6 +139,7 @@ namespace Mesen.Debugger.ViewModels
 		[Reactive] public MesenList<ProfiledFunctionViewModel> GridData { get; private set; } = new();
 		[Reactive] public SelectionModel<ProfiledFunctionViewModel> Selection { get; set; } = new();
 		[Reactive] public SortState SortState { get; set; } = new();
+		public ProfilerConfig Config => ConfigManager.Config.Debug.Profiler;
 		public List<int> ColumnWidths { get; } = ConfigManager.Config.Debug.Profiler.ColumnWidths;
 
 		private object _updateLock = new();		
@@ -179,6 +244,12 @@ namespace Mesen.Debugger.ViewModels
 				if(label != null) {
 					functionName = label.Label + " (" + functionName + ")";
 				}
+			}
+
+			if(func.Flags.HasFlag(StackFrameFlags.Irq)) {
+				functionName = "[irq] " + functionName;
+			} else if(func.Flags.HasFlag(StackFrameFlags.Nmi)) {
+				functionName = "[nmi] " + functionName;
 			}
 
 			return functionName;

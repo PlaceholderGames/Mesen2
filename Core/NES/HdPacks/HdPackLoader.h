@@ -4,6 +4,8 @@
 #include "Utilities/ZipReader.h"
 #include "Utilities/VirtualFile.h"
 
+enum class HdPackConditionOperator;
+
 class HdPackLoader
 {
 public:
@@ -13,6 +15,8 @@ public:
 private:
 	HdPackData* _data = nullptr;
 	bool _loadFromZip = false;
+	int _currentLine = 0;
+	int _errorCount = 0;
 	ZipReader _reader;
 	string _hdPackDefinitionFile;
 	string _hdPackFolder;
@@ -39,6 +43,7 @@ private:
 	void ProcessPatchTag(vector<string> &tokens);
 	void ProcessOverscanTag(vector<string> &tokens);
 	void ProcessConditionTag(vector<string> &tokens, bool createInvertedCondition);
+	HdPackConditionOperator ParseConditionOperator(string& opString);
 	void ProcessTileTag(vector<string> &tokens, vector<HdPackCondition*> conditions);
 	void ProcessBackgroundTag(vector<string> &tokens, vector<HdPackCondition*> conditions);
 	void ProcessAdditionTag(vector<string>& tokens);
@@ -51,4 +56,5 @@ private:
 	void ProcessSfxTag(vector<string> &tokens);
 
 	vector<HdPackCondition*> ParseConditionString(string conditionString);
+	bool ParseBooleanValue(string value);
 };

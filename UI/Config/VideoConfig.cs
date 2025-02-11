@@ -29,6 +29,11 @@ namespace Mesen.Config
 		[Reactive] [MinMax(-100, 100)] public int Saturation { get; set; } = 0;
 		[Reactive] [MinMax(0, 100)] public int ScanlineIntensity { get; set; } = 0;
 
+		[Reactive][MinMax(0, 100)] public int LcdGridTopLeftBrightness { get; set; } = 100;
+		[Reactive][MinMax(0, 100)] public int LcdGridTopRightBrightness { get; set; } = 85;
+		[Reactive][MinMax(0, 100)] public int LcdGridBottomLeftBrightness { get; set; } = 85;
+		[Reactive][MinMax(0, 100)] public int LcdGridBottomRightBrightness { get; set; } = 85;
+
 		[Reactive] [MinMax(-100, 100)] public int NtscArtifacts { get; set; } = 0;
 		[Reactive] [MinMax(-100, 100)] public int NtscBleed { get; set; } = 0;
 		[Reactive] [MinMax(-100, 100)] public int NtscFringing { get; set; } = 0;
@@ -56,10 +61,24 @@ namespace Mesen.Config
 
 		public void ApplyConfig()
 		{
+			double customAspectRatio = CustomAspectRatio;
+			VideoAspectRatio aspectRatio = AspectRatio;
+			VideoFilterType videoFilter = VideoFilter;
+
+			ConsoleOverrideConfig? overrides = ConsoleOverrideConfig.GetActiveOverride();
+			if(overrides?.OverrideVideoFilter == true) {
+				videoFilter = overrides.VideoFilter;
+			}
+
+			if(overrides?.OverrideAspectRatio == true) {
+				aspectRatio = overrides.AspectRatio;
+				customAspectRatio = overrides.CustomAspectRatio;
+			}
+
 			ConfigApi.SetVideoConfig(new InteropVideoConfig() {
-				CustomAspectRatio = this.CustomAspectRatio,
-				VideoFilter = this.VideoFilter,
-				AspectRatio = this.AspectRatio,
+				CustomAspectRatio = customAspectRatio,
+				VideoFilter = videoFilter,
+				AspectRatio = aspectRatio,
 
 				UseBilinearInterpolation = this.UseBilinearInterpolation,
 				UseSrgbTextureFormat = this.UseSrgbTextureFormat,
@@ -71,6 +90,11 @@ namespace Mesen.Config
 				Hue = this.Hue / 100.0,
 				Saturation = this.Saturation / 100.0,
 				ScanlineIntensity = this.ScanlineIntensity / 100.0,
+
+				LcdGridTopLeftBrightness = this.LcdGridTopLeftBrightness / 100.0,
+				LcdGridTopRightBrightness = this.LcdGridTopRightBrightness / 100.0,
+				LcdGridBottomLeftBrightness = this.LcdGridBottomLeftBrightness / 100.0,
+				LcdGridBottomRightBrightness = this.LcdGridBottomRightBrightness / 100.0,
 
 				NtscArtifacts = this.NtscArtifacts / 100.0,
 				NtscBleed = this.NtscBleed / 100.0,
@@ -115,6 +139,11 @@ namespace Mesen.Config
 		public double Saturation;
 		public double ScanlineIntensity;
 
+		public double LcdGridTopLeftBrightness;
+		public double LcdGridTopRightBrightness;
+		public double LcdGridBottomLeftBrightness;
+		public double LcdGridBottomRightBrightness;
+
 		public double NtscArtifacts;
 		public double NtscBleed;
 		public double NtscFringing;
@@ -143,6 +172,7 @@ namespace Mesen.Config
 		None = 0,
 		NtscBlargg,
 		NtscBisqwit,
+		LcdGrid,
 		xBRZ2x,
 		xBRZ3x,
 		xBRZ4x,

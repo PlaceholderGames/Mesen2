@@ -54,7 +54,7 @@ void RecordedRomTest::ValidateFrame()
 	PpuFrameInfo frame = _emu->GetPpuFrame();
 
 	uint8_t md5Hash[16];
-	GetMd5Sum(md5Hash, frame.FrameBuffer, frame.Width * frame.Height * sizeof(uint16_t));
+	GetMd5Sum(md5Hash, frame.FrameBuffer, frame.FrameBufferSize);
 
 	if(_currentCount == 0) {
 		_currentCount = _repetitionCount.front();
@@ -123,20 +123,25 @@ void RecordedRomTest::Record(string filename, bool reset)
 		_emu->Lock();
 		Reset();
 
+		EmuSettings* settings = _emu->GetSettings();
+		settings->GetSnesConfig().RamPowerOnState = RamState::AllZeros;
+		settings->GetNesConfig().RamPowerOnState = RamState::AllZeros;
+		settings->GetGameboyConfig().RamPowerOnState = RamState::AllZeros;
+		settings->GetPcEngineConfig().RamPowerOnState = RamState::AllZeros;
+		settings->GetSmsConfig().RamPowerOnState = RamState::AllZeros;
+		settings->GetCvConfig().RamPowerOnState = RamState::AllZeros;
+		settings->GetGbaConfig().RamPowerOnState = RamState::AllZeros;
 
-		_emu->GetSettings()->GetSnesConfig().RamPowerOnState = RamState::AllZeros;
-		_emu->GetSettings()->GetSnesConfig().DisableFrameSkipping = true;
+		settings->GetSnesConfig().DisableFrameSkipping = true;
+		settings->GetPcEngineConfig().DisableFrameSkipping = true;
+		settings->GetGbaConfig().DisableFrameSkipping = true;
 
-		_emu->GetSettings()->GetNesConfig().RamPowerOnState = RamState::AllZeros;
-		_emu->GetSettings()->GetGameboyConfig().RamPowerOnState = RamState::AllZeros;
-		
-		_emu->GetSettings()->GetPcEngineConfig().RamPowerOnState = RamState::AllZeros;
-		_emu->GetSettings()->GetPcEngineConfig().DisableFrameSkipping = true;
+		settings->GetGbaConfig().SkipBootScreen = false;
 				
 		//Start recording movie alongside with screenshots
 		RecordMovieOptions options;
 		string movieFilename = FolderUtilities::CombinePath(FolderUtilities::GetFolderName(filename), FolderUtilities::GetFilename(filename, false) + ".mmo");
-		memcpy(options.Filename, movieFilename.c_str(), std::max(1000, (int)movieFilename.size()));
+		memcpy(options.Filename, movieFilename.c_str(), std::min(1000, (int)movieFilename.size()));
 		options.RecordFrom = reset ? RecordMovieFrom::StartWithSaveData : RecordMovieFrom::CurrentState;
 		_emu->GetMovieManager()->Record(options);
 
@@ -208,13 +213,18 @@ RomTestResult RecordedRomTest::Run(string filename)
 		}
 
 		settings->GetSnesConfig().RamPowerOnState = RamState::AllZeros;
-		settings->GetSnesConfig().DisableFrameSkipping = true;
-
 		settings->GetNesConfig().RamPowerOnState = RamState::AllZeros;
 		settings->GetGameboyConfig().RamPowerOnState = RamState::AllZeros;
-
 		settings->GetPcEngineConfig().RamPowerOnState = RamState::AllZeros;
+		settings->GetSmsConfig().RamPowerOnState = RamState::AllZeros;
+		settings->GetCvConfig().RamPowerOnState = RamState::AllZeros;
+		settings->GetGbaConfig().RamPowerOnState = RamState::AllZeros;
+
+		settings->GetSnesConfig().DisableFrameSkipping = true;
 		settings->GetPcEngineConfig().DisableFrameSkipping = true;
+		settings->GetGbaConfig().DisableFrameSkipping = true;
+		
+		settings->GetGbaConfig().SkipBootScreen = false;
 
 		_emu->Lock();
 		//Start playing movie
@@ -224,6 +234,7 @@ RomTestResult RecordedRomTest::Run(string filename)
 
 			_runningTest = true;
 			_emu->Unlock();
+			_emu->Resume();
 			_signal.Wait();
 			_emu->Stop(!_inBackground);
 			_runningTest = false;

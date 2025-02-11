@@ -57,6 +57,9 @@ protected:
 	uint16_t GetPrgPageSize() override { return 0x2000; }
 	uint16_t GetChrPageSize() override { return 0x0400; }
 	bool AllowRegisterRead() override { return true; }
+	bool EnableCpuClockHook() override { return true; }
+	bool EnableCustomVramRead() override { return true; }
+	bool EnableVramAddressHook() override { return true; }
 
 	void InitMapper() override
 	{
@@ -365,6 +368,8 @@ protected:
 
 	void ProcessCpuClock() override
 	{
+		BaseProcessCpuClock();
+
 		if(_irqSource == JyIrqSource::CpuClock || (_irqSource == JyIrqSource::CpuWrite && _console->GetCpu()->IsCpuWrite())) {
 			TickIrqCounter();
 		}
@@ -393,7 +398,7 @@ protected:
 			}
 		}
 
-		return BaseMapper::MapperReadVram(addr, type);
+		return InternalReadVram(addr);
 	}
 
 	void NotifyVramAddressChange(uint16_t addr) override

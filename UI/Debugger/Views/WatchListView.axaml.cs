@@ -10,6 +10,8 @@ using DataBoxControl;
 using Avalonia.Styling;
 using Avalonia.LogicalTree;
 using Avalonia.Controls.Selection;
+using Avalonia.Threading;
+using Mesen.Utilities;
 
 namespace Mesen.Debugger.Views
 {
@@ -17,25 +19,52 @@ namespace Mesen.Debugger.Views
 	{
 		public WatchListViewModel Model => (WatchListViewModel)DataContext!;
 
+		private DataBox _grid;
+
 		public WatchListView()
 		{
 			InitializeComponent();
+
+			_grid = this.GetControl<DataBox>("WatchList");
+			_grid.AddHandler(WatchListView.KeyDownEvent, OnGridKeyDown, RoutingStrategies.Tunnel, true);
 		}
 
 		private void InitializeComponent()
 		{
 			AvaloniaXamlLoader.Load(this);
-
-			DataBox grid = this.GetControl<DataBox>("WatchList");
-			grid.AddHandler(WatchListView.KeyDownEvent, OnGridKeyDown, RoutingStrategies.Tunnel, true);
 		}
 
 		protected override void OnDataContextChanged(EventArgs e)
 		{
 			if(DataContext is WatchListViewModel model) {
 				model.InitContextMenu(this);
+				model.Selection.SelectionChanged += Selection_SelectionChanged;
 			}
 			base.OnDataContextChanged(e);
+		}
+
+		bool inSelectionChanged = false;
+		private void Selection_SelectionChanged(object? sender, SelectionModelSelectionChangedEventArgs<WatchValueInfo> e)
+		{
+			if(inSelectionChanged || Model == null || !IsKeyboardFocusWithin) {
+				return;
+			}
+
+			inSelectionChanged = true;
+			if(Model.Selection.Count == 1) {
+				Dispatcher.UIThread.Post(() => {
+					int index = Model.Selection.SelectedIndex;
+					if(_grid.GetRow(index)?.IsKeyboardFocusWithin == false) {
+						_grid.GetRow(index)?.Focus();
+					}
+				});
+			} else if(Model.Selection.Count == 0) {
+				Dispatcher.UIThread.Post(() => {
+					_grid.GetRow(0)?.Focus();
+					Model.Selection.Select(0);
+				});
+			}
+			inSelectionChanged = false;
 		}
 
 		private void OnEntryContextRequested(object? sender, ContextRequestedEventArgs e)
@@ -45,8 +74,10 @@ namespace Mesen.Debugger.Views
 				int index = Model.WatchEntries.IndexOf(entry);
 				if(index >= 0) {
 					if(!Model.Selection.IsSelected(index)) {
+						Model.Selection.BeginBatchUpdate();
 						Model.Selection.Clear();
 						Model.Selection.Select(index);
+						Model.Selection.EndBatchUpdate();
 					}
 					txt.FindLogicalAncestorOfType<DataBoxRow>()?.Focus();
 				}
@@ -67,8 +98,8 @@ namespace Mesen.Debugger.Views
 			if(sender is TextBox txt && txt.DataContext is WatchValueInfo entry) {
 				if(e.Key == Key.Enter) {
 					e.Handled = true;
-					Model.EditWatch(Model.WatchEntries.IndexOf(entry), entry.Expression);
 					txt.FindLogicalAncestorOfType<DataBoxRow>()?.Focus();
+					Model.EditWatch(Model.WatchEntries.IndexOf(entry), entry.Expression);
 				} else if(e.Key == Key.Escape) {
 					//Undo
 					e.Handled = true;
@@ -89,8 +120,7 @@ namespace Mesen.Debugger.Views
 			//(except when control is held, to allow Ctrl+A select all to work properly)
 			if(e.Source is DataBoxRow row && e.KeyModifiers != KeyModifiers.Control && IsTextKey(e.Key)) {
 				WatchListTextBox? txt = row.CellsPresenter?.GetControl<WatchListTextBox>(0);
-				txt?.SelectAll();
-				txt?.Focus();
+				txt?.FocusAndSelectAll();
 			}
 		}
 	}
@@ -122,11 +152,12 @@ namespace Mesen.Debugger.Views
 				//When clicking the textbox, select the row, too
 				ISelectionModel selection = _listView.Model.Selection;
 				if(!selection.SelectedItems.Contains(watch) || selection.SelectedItems.Count > 1) {
+					selection.BeginBatchUpdate();
 					if(e.KeyModifiers != KeyModifiers.Shift && e.KeyModifiers != KeyModifiers.Control) {
 						selection.Clear();
 					}
-
 					selection.Select(_listView.Model.WatchEntries.IndexOf(watch));
+					selection.EndBatchUpdate();
 					Focus();
 				}
 			}

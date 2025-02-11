@@ -15,6 +15,7 @@ protected:
 	uint16_t GetChrPageSize() override { return 0x2000; }
 	uint16_t RegisterStartAddress() override { return 0x4122; }
 	uint16_t RegisterEndAddress() override { return 0x4122; }
+	bool EnableCpuClockHook() override { return true; }
 
 	void InitMapper() override
 	{
@@ -43,6 +44,8 @@ protected:
 
 	void ProcessCpuClock() override
 	{
+		BaseProcessCpuClock();
+
 		if(_irqEnabled) {
 			_irqCounter = (_irqCounter + 1) & 0xFFF;
 			if(_irqCounter == 0) {

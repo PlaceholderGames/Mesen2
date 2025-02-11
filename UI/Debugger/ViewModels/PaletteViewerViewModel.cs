@@ -106,7 +106,7 @@ namespace Mesen.Debugger.ViewModels
 			DebugShortcutManager.RegisterActions(wnd, FileMenuActions);
 			DebugShortcutManager.RegisterActions(wnd, ViewMenuActions);
 
-			DebugShortcutManager.CreateContextMenu(palSelector, new List<object> {
+			AddDisposables(DebugShortcutManager.CreateContextMenu(palSelector, new List<object> {
 				new ContextMenuAction() {
 					ActionType = ActionType.EditColor,
 					Shortcut = () => ConfigManager.Config.Debug.Shortcuts.Get(DebuggerShortcut.PaletteViewer_EditColor),
@@ -126,15 +126,15 @@ namespace Mesen.Debugger.ViewModels
 					OnClick = () => {
 						if(_palette != null) {
 							DebugPaletteInfo pal = _palette.Get();
-							int memSize = DebugApi.GetMemorySize(pal.PaletteMemType);
+							int memSize = DebugApi.GetMemorySize(pal.PaletteMemType) - (int)pal.PaletteMemOffset;
 							if(memSize > 0) {
 								int bytesPerColor = memSize / (int)pal.ColorCount;
-								MemoryToolsWindow.ShowInMemoryTools(pal.PaletteMemType, SelectedPalette * bytesPerColor);
+								MemoryToolsWindow.ShowInMemoryTools(pal.PaletteMemType, (int)pal.PaletteMemOffset + SelectedPalette * bytesPerColor);
 							}
 						}
 					}
 				},
-			});
+			}));
 		}
 
 		private async void EditColor(Window wnd, int selectedPalette)
@@ -148,7 +148,7 @@ namespace Mesen.Debugger.ViewModels
 				return;
 			}
 
-			if(palette.RawFormat == RawPaletteFormat.Rgb555 || palette.RawFormat == RawPaletteFormat.Rgb444) {
+			if(palette.RawFormat == RawPaletteFormat.Rgb555 || palette.RawFormat == RawPaletteFormat.Rgb444 || palette.RawFormat == RawPaletteFormat.Bgr444) {
 				ColorPickerViewModel model = new ColorPickerViewModel() { Color = Color.FromUInt32(palette.GetRgbPalette()[selectedPalette]) };
 				ColorPickerWindow colorPicker = new ColorPickerWindow() { DataContext = model };
 				bool success = await colorPicker.ShowCenteredDialog<bool>(wnd);

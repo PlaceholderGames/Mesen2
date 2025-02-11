@@ -12,7 +12,7 @@ struct RenderSurfaceInfo
 	uint32_t Height = 0;
 	bool IsDirty = true;
 
-	void UpdateSize(uint32_t width, uint32_t height)
+	bool UpdateSize(uint32_t width, uint32_t height)
 	{
 		if(Width != width || Height != height) {
 			delete[] Buffer;
@@ -20,7 +20,9 @@ struct RenderSurfaceInfo
 			Width = width;
 			Height = height;
 			Clear();
+			return true;
 		}
+		return false;
 	}
 
 	void Clear()
@@ -43,5 +45,6 @@ class IRenderingDevice
 		virtual void ClearFrame() = 0;
 		virtual void Render(RenderSurfaceInfo& emuHud, RenderSurfaceInfo& scriptHud) = 0;
 		virtual void Reset() = 0;
+		virtual void OnRendererThreadStarted() {}
 		virtual void SetExclusiveFullscreenMode(bool fullscreen, void* windowHandle) = 0;
 };

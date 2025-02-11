@@ -21,7 +21,9 @@ public:
 	static string TrimLeft(string str)
 	{
 		size_t startIndex = str.find_first_not_of("\t ");
-		if(startIndex > 0 && startIndex != string::npos) {
+		if(startIndex == string::npos) {
+			return "";
+		} else if(startIndex > 0) {
 			return str.substr(startIndex);
 		}
 		return str;
@@ -30,7 +32,9 @@ public:
 	static string TrimRight(string str)
 	{
 		size_t endIndex = str.find_last_not_of("\t\r\n ");
-		if(endIndex > 0 && endIndex != string::npos) {
+		if(endIndex == string::npos) {
+			return "";
+		} else if(endIndex > 0) {
 			return str.substr(0, endIndex + 1);
 		}
 		return str;
@@ -61,11 +65,53 @@ public:
 	static bool StartsWith(string& str, const char* content)
 	{
 		size_t length = strlen(content);
+		if(str.size() < length) {
+			return false;
+		}
+
 		for(size_t i = 0; i < length; i++) {
 			if(str[i] != content[i]) {
 				return false;
 			}
 		}
 		return true;
+	}
+
+	static bool EndsWith(string& str, const char* content)
+	{
+		size_t length = strlen(content);
+		if(str.size() < length) {
+			return false;
+		}
+
+		size_t startPos = str.size() - length;
+		for(size_t i = startPos; i < str.size(); i++) {
+			if(str[i] != content[i - startPos]) {
+				return false;
+			}
+		}
+
+		return true;
+	}
+
+	static bool Contains(string& str, const char* content)
+	{
+		size_t length = strlen(content);
+		return std::search(str.begin(), str.end(), content, content+length) != str.end();
+	}
+
+	static string GetString(char* src, uint32_t maxLen)
+	{
+		return GetString((uint8_t*)src, maxLen);
+	}
+
+	static string GetString(uint8_t* src, int maxLen)
+	{
+		for(int i = 0; i < maxLen; i++) {
+			if(src[i] == 0) {
+				return string(src, src + i);
+			}
+		}
+		return string(src, src+maxLen);
 	}
 };

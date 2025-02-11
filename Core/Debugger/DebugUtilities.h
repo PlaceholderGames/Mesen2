@@ -16,10 +16,13 @@ public:
 			case CpuType::Sa1: return MemoryType::Sa1Memory;
 			case CpuType::Gsu: return MemoryType::GsuMemory;
 			case CpuType::Cx4: return MemoryType::Cx4Memory;
+			case CpuType::St018: return MemoryType::St018Memory;
 			case CpuType::Gameboy: return MemoryType::GameboyMemory;
 			case CpuType::Nes: return MemoryType::NesMemory;
 			case CpuType::Pce: return MemoryType::PceMemory;
 			case CpuType::Sms: return MemoryType::SmsMemory;
+			case CpuType::Gba: return MemoryType::GbaMemory;
+			case CpuType::Ws: return MemoryType::WsMemory;
 		}
 
 		throw std::runtime_error("Invalid CPU type");
@@ -34,10 +37,13 @@ public:
 			case CpuType::Sa1: return 6;
 			case CpuType::Gsu: return 6;
 			case CpuType::Cx4: return 6;
+			case CpuType::St018: return 8;
 			case CpuType::Gameboy: return 4;
 			case CpuType::Nes: return 4;
 			case CpuType::Pce: return 4;
 			case CpuType::Sms: return 4;
+			case CpuType::Gba: return 8;
+			case CpuType::Ws: return 5;
 		}
 
 		throw std::runtime_error("Invalid CPU type");
@@ -55,6 +61,9 @@ public:
 			case MemoryType::SnesWorkRam:
 			case MemoryType::BsxMemoryPack:
 			case MemoryType::BsxPsRam:
+			case MemoryType::SufamiTurboFirmware:
+			case MemoryType::SufamiTurboSecondCart:
+			case MemoryType::SufamiTurboSecondCartRam:
 			case MemoryType::SnesRegister:
 				return CpuType::Snes;
 
@@ -81,7 +90,13 @@ public:
 			case MemoryType::Cx4DataRam:
 			case MemoryType::Cx4Memory:
 				return CpuType::Cx4;
-				
+
+			case MemoryType::St018Memory:
+			case MemoryType::St018PrgRom:
+			case MemoryType::St018DataRom:
+			case MemoryType::St018WorkRam:
+				return CpuType::St018;
+
 			case MemoryType::GbPrgRom:
 			case MemoryType::GbWorkRam:
 			case MemoryType::GbCartRam:
@@ -97,6 +112,7 @@ public:
 			case MemoryType::NesInternalRam:
 			case MemoryType::NesMemory:
 			case MemoryType::NesNametableRam:
+			case MemoryType::NesMapperRam:
 			case MemoryType::NesPaletteRam:
 			case MemoryType::NesPpuMemory:
 			case MemoryType::NesPrgRom:
@@ -131,6 +147,27 @@ public:
 			case MemoryType::SmsPort:
 				return CpuType::Sms;
 
+			case MemoryType::GbaMemory:
+			case MemoryType::GbaPrgRom:
+			case MemoryType::GbaBootRom:
+			case MemoryType::GbaSaveRam:
+			case MemoryType::GbaIntWorkRam:
+			case MemoryType::GbaExtWorkRam:
+			case MemoryType::GbaVideoRam:
+			case MemoryType::GbaSpriteRam:
+			case MemoryType::GbaPaletteRam:
+				return CpuType::Gba;
+
+			case MemoryType::WsMemory:
+			case MemoryType::WsPrgRom:
+			case MemoryType::WsWorkRam:
+			case MemoryType::WsCartRam:
+			case MemoryType::WsCartEeprom:
+			case MemoryType::WsBootRom:
+			case MemoryType::WsInternalEeprom:
+			case MemoryType::WsPort:
+				return CpuType::Ws;
+
 			default:
 				throw std::runtime_error("Invalid CPU type");
 		}
@@ -143,7 +180,7 @@ public:
 
 	static constexpr MemoryType GetLastCpuMemoryType()
 	{
-		return MemoryType::SmsMemory;
+		return MemoryType::WsMemory;
 	}
 
 	static constexpr bool IsPpuMemory(MemoryType memType)
@@ -175,6 +212,11 @@ public:
 			case MemoryType::SmsPaletteRam:
 				return true;
 
+			case MemoryType::GbaVideoRam:
+			case MemoryType::GbaSpriteRam:
+			case MemoryType::GbaPaletteRam:
+				return true;
+
 			default: 
 				return false;
 		}
@@ -191,9 +233,16 @@ public:
 			case MemoryType::PcePrgRom:
 			case MemoryType::DspDataRom:
 			case MemoryType::DspProgramRom:
+			case MemoryType::St018PrgRom:
+			case MemoryType::St018DataRom:
+			case MemoryType::SufamiTurboFirmware:
+			case MemoryType::SufamiTurboSecondCart:
 			case MemoryType::SpcRom:
 			case MemoryType::SmsPrgRom:
 			case MemoryType::SmsBootRom:
+			case MemoryType::GbaPrgRom:
+			case MemoryType::GbaBootRom:
+			case MemoryType::WsPrgRom:
 				return true;
 
 			default:
@@ -211,9 +260,12 @@ public:
 			case MemoryType::NesSaveRam:
 			case MemoryType::GbCartRam:
 			case MemoryType::SnesSaveRam:
+			case MemoryType::SufamiTurboSecondCartRam:
 			case MemoryType::PceSaveRam:
 			case MemoryType::SnesRegister:
 			case MemoryType::SmsCartRam:
+			case MemoryType::GbaSaveRam:
+			case MemoryType::WsCartRam:
 				return false;
 
 			default:
@@ -223,7 +275,7 @@ public:
 
 	static constexpr CpuType GetLastCpuType()
 	{
-		return CpuType::Sms;
+		return CpuType::Ws;
 	}
 
 	static string AddressToHex(CpuType cpuType, int32_t address)
@@ -231,8 +283,12 @@ public:
 		int size = GetProgramCounterSize(cpuType);
 		if(size == 4) {
 			return HexUtilities::ToHex((uint16_t)address);
+		} else if(size == 5) {
+			return HexUtilities::ToHex20(address);
 		} else if(size == 6) {
 			return HexUtilities::ToHex24(address);
+		} else if(size == 8) {
+			return HexUtilities::ToHex32(address);
 		} else {
 			return HexUtilities::ToHex(address);
 		}

@@ -40,11 +40,14 @@ namespace Mesen.Config
 		[Reactive] public bool AssociateNesMusicFiles { get; set; } = false;
 		[Reactive] public bool AssociateGbRomFiles { get; set; } = false;
 		[Reactive] public bool AssociateGbMusicFiles { get; set; } = false;
+		[Reactive] public bool AssociateGbaRomFiles { get; set; } = false;
 		[Reactive] public bool AssociatePceRomFiles { get; set; } = false;
 		[Reactive] public bool AssociatePceMusicFiles { get; set; } = false;
 		[Reactive] public bool AssociateSmsRomFiles { get; set; } = false;
 		[Reactive] public bool AssociateGameGearRomFiles { get; set; } = false;
 		[Reactive] public bool AssociateSgRomFiles { get; set; } = false;
+		[Reactive] public bool AssociateCvRomFiles { get; set; } = false;
+		[Reactive] public bool AssociateWsRomFiles { get; set; } = false;
 
 		[Reactive] public bool EnableAutoSaveState { get; set; } = true;
 		[Reactive] public UInt32 AutoSaveStateDelay { get; set; } = 5;
@@ -200,6 +203,17 @@ namespace Mesen.Config
 			MesenFont = Configuration.GetDefaultFont();
 			MesenMenuFont = Configuration.GetDefaultMenuFont();
 			ApplyFontOptions();
+		}
+
+		public static void UpdateTheme()
+		{
+			if(Application.Current != null) {
+				ThemeVariant newTheme = ConfigManager.Config.Preferences.Theme == MesenTheme.Dark ? ThemeVariant.Dark : ThemeVariant.Light;
+				if(Application.Current.RequestedThemeVariant != newTheme) {
+					ConfigManager.ActiveTheme = ConfigManager.Config.Preferences.Theme;
+					Application.Current.RequestedThemeVariant = newTheme;
+				}
+			}
 		}
 
 		public void ApplyConfig()

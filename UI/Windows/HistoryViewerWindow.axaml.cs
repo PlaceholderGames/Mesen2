@@ -9,7 +9,6 @@ using Avalonia.Data;
 using Mesen.Interop;
 using Mesen.ViewModels;
 using Avalonia.Layout;
-using Mesen.Utilities.GlobalMouseLib;
 using Mesen.Utilities;
 using Mesen.Config;
 using System.Runtime.InteropServices;
@@ -72,15 +71,23 @@ namespace Mesen.Windows
 				return;
 			}
 
-			bool leftPressed = GlobalMouse.IsMouseButtonPressed(MouseButtons.Left);
-			MousePosition p = GlobalMouse.GetMousePosition(_renderer.Handle);
-			PixelPoint mousePos = new PixelPoint(p.X, p.Y);
-			PixelPoint rendererTopLeft = _renderer.PointToScreen(new Point());
-			PixelRect rendererScreenRect = new PixelRect(rendererTopLeft, PixelSize.FromSize(_renderer.Bounds.Size, LayoutHelper.GetLayoutScale(this)));
+			bool usesSoftwareRenderer = _model.IsSoftwareRendererVisible;
+
+			SystemMouseState mouseState = InputApi.GetSystemMouseState(usesSoftwareRenderer ? IntPtr.Zero : _renderer.Handle);
+			PixelPoint mousePos = new PixelPoint(mouseState.XPosition, mouseState.YPosition);
+
+			PixelPoint rendererTopLeft;
+			PixelRect rendererScreenRect;
+			if(usesSoftwareRenderer) {
+				rendererTopLeft = _softwareRenderer.PointToScreen(new Point());
+				rendererScreenRect = new PixelRect(rendererTopLeft, PixelSize.FromSize(_softwareRenderer.Bounds.Size, LayoutHelper.GetLayoutScale(this) / InputApi.GetPixelScale()));
+			} else {
+				rendererTopLeft = _renderer.PointToScreen(new Point());
+				rendererScreenRect = new PixelRect(rendererTopLeft, PixelSize.FromSize(_renderer.Bounds.Size, LayoutHelper.GetLayoutScale(this) / InputApi.GetPixelScale()));
+			}
 
 			if(rendererScreenRect.Contains(mousePos)) {
-				GlobalMouse.SetCursorIcon(CursorIcon.Arrow);
-				if(leftPressed && !_prevLeftPressed) {
+				if(mouseState.LeftButton && !_prevLeftPressed) {
 					if(_mainMenu.IsOpen) {
 						_mainMenu.Close();
 					} else {
@@ -89,7 +96,7 @@ namespace Mesen.Windows
 				}
 			}
 
-			_prevLeftPressed = leftPressed;
+			_prevLeftPressed = mouseState.LeftButton;
 		}
 
 		private void InitializeComponent()
@@ -140,21 +147,20 @@ namespace Mesen.Windows
 		private void InternalSetScale(double scale)
 		{
 			double dpiScale = LayoutHelper.GetLayoutScale(this);
-			scale /= dpiScale;
+			double aspectRatio = EmuApi.GetAspectRatio();
 
 			FrameInfo screenSize = EmuApi.GetBaseScreenSize();
 			if(WindowState == WindowState.Normal) {
 				_rendererSize = new Size();
 
-				double aspectRatio = EmuApi.GetAspectRatio();
 				double menuHeight = _mainMenu.Bounds.Height;
 
-				double width = Math.Max(MinWidth, Math.Round(screenSize.Height * aspectRatio) * scale);
-				double height = Math.Max(MinHeight, screenSize.Height * scale);
+				double width = Math.Max(MinWidth, Math.Round(screenSize.Height * aspectRatio * scale) / dpiScale);
+				double height = Math.Max(MinHeight, screenSize.Height * scale / dpiScale);
 				ClientSize = new Size(width, height + menuHeight + _controlBar.Bounds.Height);
 				ResizeRenderer();
 			} else if(WindowState == WindowState.Maximized || WindowState == WindowState.FullScreen) {
-				_rendererSize = new Size(Math.Floor(screenSize.Width * scale), Math.Floor(screenSize.Height * scale));
+				_rendererSize = new Size(Math.Floor(screenSize.Width * scale * aspectRatio) / dpiScale, Math.Floor(screenSize.Height * scale) / dpiScale);
 				ResizeRenderer();
 			}
 		}
@@ -168,27 +174,31 @@ namespace Mesen.Windows
 		private void RendererPanel_LayoutUpdated(object? sender, EventArgs e)
 		{
 			double aspectRatio = EmuApi.GetAspectRatio();
+			double dpiScale = LayoutHelper.GetLayoutScale(this);
 
 			Size finalSize = _rendererSize == default ? _rendererPanel.Bounds.Size : _rendererSize;
 			double height = finalSize.Height;
 			double width = finalSize.Height * aspectRatio;
-			if(width > finalSize.Width) {
+			if(Math.Round(width) > Math.Round(finalSize.Width)) {
+				//Use renderer width to calculate the height instead of the opposite
+				//when current window dimensions would cause cropping horizontally
+				//if the screen width was calculated based on the height.
 				width = finalSize.Width;
 				height = width / aspectRatio;
 			}
 
 			if(ConfigManager.Config.Video.FullscreenForceIntegerScale && VisualRoot is Window wnd && (wnd.WindowState == WindowState.FullScreen || wnd.WindowState == WindowState.Maximized)) {
 				FrameInfo baseSize = EmuApi.GetBaseScreenSize();
-				double scale = height * LayoutHelper.GetLayoutScale(this) / baseSize.Height;
+				double scale = height * dpiScale / baseSize.Height;
 				if(scale != Math.Floor(scale)) {
-					height = baseSize.Height * Math.Max(1, Math.Floor(scale / LayoutHelper.GetLayoutScale(this)));
+					height = baseSize.Height * Math.Max(1, Math.Floor(scale / dpiScale));
 					width = height * aspectRatio;
 				}
 			}
 
 			_model.RendererSize = new Size(
-				Math.Round(width * LayoutHelper.GetLayoutScale(this)),
-				Math.Round(height * LayoutHelper.GetLayoutScale(this))
+				Math.Round(width * dpiScale),
+				Math.Round(height * dpiScale)
 			);
 
 			_renderer.Width = width;

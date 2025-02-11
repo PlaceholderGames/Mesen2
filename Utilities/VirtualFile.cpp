@@ -12,11 +12,13 @@
 #include "Utilities/CRC32.h"
 
 const std::initializer_list<string> VirtualFile::RomExtensions = {
-	".nes", ".fds", ".unif", ".unf", ".nsf", ".nsfe", ".studybox",
-	".sfc", ".swc", ".fig", ".smc", ".bs", ".spc",
-	".gb", ".gbc", ".gbs",
+	".nes", ".fds", ".qd", ".unif", ".unf", ".nsf", ".nsfe", ".studybox",
+	".sfc", ".swc", ".fig", ".smc", ".bs", ".st", ".spc",
+	".gb", ".gbc", ".gbx", ".gbs",
 	".pce", ".sgx", ".cue", ".hes",
-	".sms", ".gg", ".sg"
+	".sms", ".gg", ".sg", ".col",
+	".gba",
+	".ws", ".wsc"
 };
 
 VirtualFile::VirtualFile()

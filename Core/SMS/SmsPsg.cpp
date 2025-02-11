@@ -28,6 +28,15 @@ SmsPsg::SmsPsg(Emulator* emu, SmsConsole* console)
 	blip_set_rates(_rightChannel, _console->GetMasterClockRate(), SmsPsg::SampleRate);
 }
 
+void SmsPsg::SetRegion(ConsoleRegion region)
+{
+	blip_clear(_leftChannel);
+	blip_clear(_rightChannel);
+
+	blip_set_rates(_leftChannel, _console->GetMasterClockRate(), SmsPsg::SampleRate);
+	blip_set_rates(_rightChannel, _console->GetMasterClockRate(), SmsPsg::SampleRate);
+}
+
 void SmsPsg::RunNoise(SmsNoiseChannelState& noise)
 {
 	if(noise.Timer == 0 || --noise.Timer == 0) {
@@ -51,7 +60,7 @@ void SmsPsg::RunNoise(SmsNoiseChannelState& noise)
 void SmsPsg::Run()
 {
 	uint64_t runTo = _console->GetMasterClock();
-	SmsConfig& cfg = _settings->GetSmsConfig();
+	uint32_t* volumes = _console->GetModel() == SmsModel::ColecoVision ? _settings->GetCvConfig().ChannelVolumes : _settings->GetSmsConfig().ChannelVolumes;
 
 	while(_masterClock + 16 < runTo) {
 		int16_t outputLeft = 0;
@@ -63,7 +72,7 @@ void SmsPsg::Run()
 				_state.Tone[i].Timer = _state.Tone[i].ReloadValue;
 			}
 
-			channelOutput = _state.Tone[i].Output * _volumeLut[_state.Tone[i].Volume] * cfg.ChannelVolumes[i] / 100;
+			channelOutput = _state.Tone[i].Output * _volumeLut[_state.Tone[i].Volume] * volumes[i] / 100;
 			if(_state.GameGearPanningReg & (0x01 << i)) {
 				outputRight += channelOutput;
 			}
@@ -73,7 +82,7 @@ void SmsPsg::Run()
 		}
 
 		RunNoise(_state.Noise);
-		channelOutput = _state.Noise.Output * _volumeLut[_state.Noise.Volume] * cfg.ChannelVolumes[3] / 100;
+		channelOutput = _state.Noise.Output * _volumeLut[_state.Noise.Volume] * volumes[3] / 100;
 		if(_state.GameGearPanningReg & 0x08) {
 			outputRight += channelOutput;
 		}
@@ -93,19 +102,24 @@ void SmsPsg::Run()
 	}
 
 	if(_clockCounter >= 20000) {
-		blip_end_frame(_leftChannel, _clockCounter);
-		blip_end_frame(_rightChannel, _clockCounter);
-
-		uint32_t sampleCount = (uint32_t)blip_read_samples(_leftChannel, _soundBuffer, SmsPsg::MaxSamples, 1);
-		blip_read_samples(_rightChannel, _soundBuffer + 1, SmsPsg::MaxSamples, 1);
-
-		if(_console->IsPsgAudioMuted()) {
-			memset(_soundBuffer, 0, SmsPsg::MaxSamples * 2 * sizeof(int16_t));
-		}
-
-		_soundMixer->PlayAudioBuffer(_soundBuffer, sampleCount, SmsPsg::SampleRate);
-		_clockCounter = 0;
+		PlayQueuedAudio();
 	}
+}
+
+void SmsPsg::PlayQueuedAudio()
+{
+	blip_end_frame(_leftChannel, _clockCounter);
+	blip_end_frame(_rightChannel, _clockCounter);
+
+	uint32_t sampleCount = (uint32_t)blip_read_samples(_leftChannel, _soundBuffer, SmsPsg::MaxSamples, 1);
+	blip_read_samples(_rightChannel, _soundBuffer + 1, SmsPsg::MaxSamples, 1);
+
+	if(_console->IsPsgAudioMuted()) {
+		memset(_soundBuffer, 0, SmsPsg::MaxSamples * 2 * sizeof(int16_t));
+	}
+
+	_soundMixer->PlayAudioBuffer(_soundBuffer, sampleCount, SmsPsg::SampleRate);
+	_clockCounter = 0;
 }
 
 void SmsPsg::Write(uint8_t value)

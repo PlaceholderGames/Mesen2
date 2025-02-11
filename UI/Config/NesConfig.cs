@@ -12,6 +12,8 @@ namespace Mesen.Config
 {
 	public class NesConfig : BaseConfig<NesConfig>
 	{
+		[Reactive] public ConsoleOverrideConfig ConfigOverrides { get; set; } = new();
+
 		//Input
 		[Reactive] public NesControllerConfig Port1 { get; set; } = new();
 		[Reactive] public NesControllerConfig Port2 { get; set; } = new();
@@ -61,13 +63,16 @@ namespace Mesen.Config
 		//Emulation
 		[Reactive] public bool EnableOamDecay { get; set; } = false;
 		[Reactive] public bool EnablePpuOamRowCorruption { get; set; } = false;
+		[Reactive] public bool EnablePpuSpriteEvalBug { get; set; } = false;
 		[Reactive] public bool DisableOamAddrBug { get; set; } = false;
 		[Reactive] public bool DisablePaletteRead { get; set; } = false;
 		[Reactive] public bool DisablePpu2004Reads { get; set; } = false;
 		[Reactive] public bool EnablePpu2000ScrollGlitch { get; set; } = false;
 		[Reactive] public bool EnablePpu2006ScrollGlitch { get; set; } = false;
 		[Reactive] public bool RestrictPpuAccessOnFirstFrame { get; set; } = false;
-
+		[Reactive] public bool EnableDmcSampleDuplicationGlitch { get; set; } = false;
+		[Reactive] public bool EnableCpuTestMode { get; set; } = false;
+		
 		[Reactive] public NesConsoleType ConsoleType { get; set; } = NesConsoleType.Nes001;
 		[Reactive] public bool DisablePpuReset { get; set; } = false;
 		[Reactive] public bool AllowInvalidInput { get; set; } = false;
@@ -98,6 +103,7 @@ namespace Mesen.Config
 		[Reactive] [MinMax(0, 100)] public UInt32 Vrc7Volume { get; set; } = 100;
 		[Reactive] [MinMax(0, 100)] public UInt32 Namco163Volume { get; set; } = 100;
 		[Reactive] [MinMax(0, 100)] public UInt32 Sunsoft5bVolume { get; set; } = 100;
+		[Reactive] [MinMax(0, 100)] public UInt32 EpsmVolume { get; set; } = 100;
 
 		[Reactive] [MinMax(-100, 100)] public Int32 Square1Panning { get; set; } = 0;
 		[Reactive] [MinMax(-100, 100)] public Int32 Square2Panning { get; set; } = 0;
@@ -125,6 +131,8 @@ namespace Mesen.Config
 
 		public void ApplyConfig()
 		{
+			ConfigManager.Config.Video.ApplyConfig();
+
 			UInt32[] palette = new UInt32[512];
 			Array.Copy(UserPalette, palette, UserPalette.Length);
 			bool isFullPalette = UserPalette.Length == 512;
@@ -179,12 +187,15 @@ namespace Mesen.Config
 
 				EnableOamDecay = EnableOamDecay,
 				EnablePpuOamRowCorruption = EnablePpuOamRowCorruption,
+				EnablePpuSpriteEvalBug = EnablePpuSpriteEvalBug,
 				DisableOamAddrBug = DisableOamAddrBug,
 				DisablePaletteRead = DisablePaletteRead,
 				DisablePpu2004Reads = DisablePpu2004Reads,
 				EnablePpu2000ScrollGlitch = EnablePpu2000ScrollGlitch,
 				EnablePpu2006ScrollGlitch = EnablePpu2006ScrollGlitch,
 				RestrictPpuAccessOnFirstFrame = RestrictPpuAccessOnFirstFrame,
+				EnableDmcSampleDuplicationGlitch = EnableDmcSampleDuplicationGlitch,
+				EnableCpuTestMode = EnableCpuTestMode,
 
 				RandomizeMapperPowerOnState = RandomizeMapperPowerOnState,
 				RandomizeCpuPpuAlignment = RandomizeCpuPpuAlignment,
@@ -209,6 +220,7 @@ namespace Mesen.Config
 				Vrc7Volume = Vrc7Volume,
 				Namco163Volume = Namco163Volume,
 				Sunsoft5bVolume = Sunsoft5bVolume,
+				EpsmVolume = EpsmVolume,
 				Square1Panning = Square1Panning,
 				Square2Panning = Square2Panning,
 				TrianglePanning = TrianglePanning,
@@ -238,42 +250,7 @@ namespace Mesen.Config
 
 		public void InitializeDefaults(DefaultKeyMappingType defaultMappings)
 		{
-			List<NesKeyMapping> mappings = new List<NesKeyMapping>();
-			if(defaultMappings.HasFlag(DefaultKeyMappingType.Xbox)) {
-				NesKeyMapping mapping = new();
-				KeyPresets.ApplyXboxLayout(mapping, 0, ControllerType.NesController);
-				mappings.Add(mapping);
-			}
-			if(defaultMappings.HasFlag(DefaultKeyMappingType.Ps4)) {
-				NesKeyMapping mapping = new();
-				KeyPresets.ApplyPs4Layout(mapping, 0, ControllerType.NesController);
-				mappings.Add(mapping);
-			}
-			if(defaultMappings.HasFlag(DefaultKeyMappingType.WasdKeys)) {
-				NesKeyMapping mapping = new();
-				KeyPresets.ApplyWasdLayout(mapping, ControllerType.NesController);
-				mappings.Add(mapping);
-			}
-			if(defaultMappings.HasFlag(DefaultKeyMappingType.ArrowKeys)) {
-				NesKeyMapping mapping = new();
-				KeyPresets.ApplyArrowLayout(mapping, ControllerType.NesController);
-				mappings.Add(mapping);
-			}
-
-			Port1.Type = ControllerType.NesController;
-			Port1.TurboSpeed = 2;
-			if(mappings.Count > 0) {
-				Port1.Mapping1 = mappings[0];
-				if(mappings.Count > 1) {
-					Port1.Mapping2 = mappings[1];
-					if(mappings.Count > 2) {
-						Port1.Mapping3 = mappings[2];
-						if(mappings.Count > 3) {
-							Port1.Mapping4 = mappings[3];
-						}
-					}
-				}
-			}
+			Port1.InitDefaults<NesKeyMapping>(defaultMappings, ControllerType.NesController);
 		}
 
 		public void UpdateInputFromCoreConfig()
@@ -342,16 +319,19 @@ namespace Mesen.Config
 		[MarshalAs(UnmanagedType.I1)] public bool AllowInvalidInput;
 		[MarshalAs(UnmanagedType.I1)] public bool DisableGameGenieBusConflicts;
 		[MarshalAs(UnmanagedType.I1)] public bool DisableFlashSaves;
-		
+
 		[MarshalAs(UnmanagedType.I1)] public bool EnableOamDecay;
 		[MarshalAs(UnmanagedType.I1)] public bool EnablePpuOamRowCorruption;
+		[MarshalAs(UnmanagedType.I1)] public bool EnablePpuSpriteEvalBug;
 		[MarshalAs(UnmanagedType.I1)] public bool DisableOamAddrBug;
 		[MarshalAs(UnmanagedType.I1)] public bool DisablePaletteRead;
 		[MarshalAs(UnmanagedType.I1)] public bool DisablePpu2004Reads;
 		[MarshalAs(UnmanagedType.I1)] public bool EnablePpu2000ScrollGlitch;
 		[MarshalAs(UnmanagedType.I1)] public bool EnablePpu2006ScrollGlitch;
 		[MarshalAs(UnmanagedType.I1)] public bool RestrictPpuAccessOnFirstFrame;
-		
+		[MarshalAs(UnmanagedType.I1)] public bool EnableDmcSampleDuplicationGlitch;
+		[MarshalAs(UnmanagedType.I1)] public bool EnableCpuTestMode;
+
 		[MarshalAs(UnmanagedType.I1)] public bool RandomizeMapperPowerOnState;
 		[MarshalAs(UnmanagedType.I1)] public bool RandomizeCpuPpuAlignment;
 		public RamState RamPowerOnState;
@@ -383,6 +363,7 @@ namespace Mesen.Config
 		public UInt32 Vrc7Volume;
 		public UInt32 Namco163Volume;
 		public UInt32 Sunsoft5bVolume;
+		public UInt32 EpsmVolume;
 
 		public Int32 Square1Panning;
 		public Int32 Square2Panning;

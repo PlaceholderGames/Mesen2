@@ -16,6 +16,7 @@ namespace Mesen.Debugger
 		[Reactive] public bool BreakOnRead { get; set; }
 		[Reactive] public bool BreakOnWrite { get; set; }
 		[Reactive] public bool BreakOnExec { get; set; }
+		[Reactive] public bool Forbid { get; set; }
 
 		[Reactive] public bool Enabled { get; set; } = true;
 		[Reactive] public bool MarkEvent { get; set; }
@@ -33,7 +34,7 @@ namespace Mesen.Debugger
 		}
 
 		public bool IsAbsoluteAddress { get { return !MemoryType.IsRelativeMemory(); } }
-		public bool IsCpuBreakpoint { get { return !MemoryType.IsPpuMemory(); } }
+		public bool SupportsExec { get { return MemoryType.SupportsExecBreakpoints(); } }
 		
 		public bool IsSingleAddress { get { return StartAddress == EndAddress; } }
 		public bool IsAddressRange { get { return StartAddress != EndAddress; } }
@@ -49,8 +50,11 @@ namespace Mesen.Debugger
 				if(BreakOnWrite) {
 					type |= BreakpointTypeFlags.Write;
 				}
-				if(BreakOnExec && IsCpuBreakpoint) {
+				if(BreakOnExec && SupportsExec) {
 					type |= BreakpointTypeFlags.Execute;
+				}
+				if(Forbid) {
+					type = BreakpointTypeFlags.Forbid;
 				}
 				return type;
 			}
@@ -67,7 +71,7 @@ namespace Mesen.Debugger
 
 		public int GetRelativeAddress()
 		{
-			if(IsCpuBreakpoint && this.IsAbsoluteAddress) {
+			if(SupportsExec && this.IsAbsoluteAddress) {
 				return DebugApi.GetRelativeAddress(new AddressInfo() { Address = (int)StartAddress, Type = this.MemoryType }, this.CpuType).Address;
 			} else {
 				return (int)StartAddress;
@@ -77,7 +81,7 @@ namespace Mesen.Debugger
 		private int GetRelativeAddressEnd()
 		{
 			if(StartAddress != EndAddress) {
-				if(IsCpuBreakpoint && this.IsAbsoluteAddress) {
+				if(SupportsExec && this.IsAbsoluteAddress) {
 					return DebugApi.GetRelativeAddress(new AddressInfo() { Address = (int)this.EndAddress, Type = this.MemoryType }, this.CpuType).Address;
 				} else {
 					return (int)this.EndAddress;
@@ -101,7 +105,7 @@ namespace Mesen.Debugger
 			};
 
 			bp.Condition = new byte[1000];
-			byte[] condition = Encoding.UTF8.GetBytes(Condition.Replace(Environment.NewLine, " "));
+			byte[] condition = Encoding.UTF8.GetBytes(Condition.Replace(Environment.NewLine, " ").Trim());
 			Array.Copy(condition, bp.Condition, condition.Length);
 			return bp;
 		}
@@ -127,7 +131,7 @@ namespace Mesen.Debugger
 
 		public string GetAddressLabel()
 		{
-			if(IsCpuBreakpoint) {
+			if(MemoryType.SupportsLabels()) {
 				CodeLabel? label = LabelManager.GetLabel(new AddressInfo() { Address = (int)StartAddress, Type = MemoryType });
 				return label?.Label ?? string.Empty;
 			}
@@ -138,10 +142,14 @@ namespace Mesen.Debugger
 		{
 			string type = MemoryType.GetShortName();
 			type += ":";
-			type += BreakOnRead ? "R" : "‒";
-			type += BreakOnWrite ? "W" : "‒";
-			if(IsCpuBreakpoint) {
-				type += BreakOnExec ? "X" : "‒";
+			if(Forbid) {
+				type += "🛇";
+			} else {
+				type += BreakOnRead ? "R" : "‒";
+				type += BreakOnWrite ? "W" : "‒";
+				if(SupportsExec) {
+					type += BreakOnExec ? "X" : "‒";
+				}
 			}
 			return type;
 		}
@@ -149,7 +157,10 @@ namespace Mesen.Debugger
 		public Color GetColor()
 		{
 			DebuggerConfig config = ConfigManager.Config.Debug.Debugger;
-			return BreakOnExec? config.CodeExecBreakpointColor: (BreakOnWrite ? config.CodeWriteBreakpointColor : config.CodeReadBreakpointColor);
+			if(Forbid) {
+				return Color.FromUInt32(config.ForbidBreakpointColor);
+			} 
+			return Color.FromUInt32(BreakOnExec ? config.CodeExecBreakpointColor: (BreakOnWrite ? config.CodeWriteBreakpointColor : config.CodeReadBreakpointColor));
 		}
 
 		public Breakpoint Clone()
@@ -169,6 +180,7 @@ namespace Mesen.Debugger
 			BreakOnExec = copy.BreakOnExec;
 			BreakOnRead = copy.BreakOnRead;
 			BreakOnWrite = copy.BreakOnWrite;
+			Forbid = copy.Forbid;
 			CpuType = copy.CpuType;
 		}
 	}
@@ -177,8 +189,9 @@ namespace Mesen.Debugger
 	public enum BreakpointTypeFlags
 	{
 		None = 0,
-		Execute = 1,
-		Read = 2,
-		Write = 4,
+		Read = 1,
+		Write = 2,
+		Execute = 4,
+		Forbid = 8,
 	}
 }

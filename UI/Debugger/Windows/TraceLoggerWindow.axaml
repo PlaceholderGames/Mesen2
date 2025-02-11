@@ -34,16 +34,16 @@
 		</Style>
 	</Window.Styles>
 
-	<DockPanel Margin="2">
+	<DockPanel>
 		<c:MesenMenu DockPanel.Dock="Top" Name="ActionMenu">
-			<MenuItem Header="{l:Translate mnuFile}" ItemsSource="{CompiledBinding FileMenuItems}" />
-			<MenuItem Header="{l:Translate mnuDebug}" ItemsSource="{CompiledBinding DebugMenuItems}" />
-			<MenuItem Header="{l:Translate mnuSearch}" ItemsSource="{CompiledBinding SearchMenuItems}" />
-			<MenuItem Header="{l:Translate mnuView}" ItemsSource="{CompiledBinding ViewMenuItems}" />
+			<MenuItem Header="{l:Translate mnuFile}" ItemsSource="{Binding FileMenuItems}" />
+			<MenuItem Header="{l:Translate mnuDebug}" ItemsSource="{Binding DebugMenuItems}" />
+			<MenuItem Header="{l:Translate mnuSearch}" ItemsSource="{Binding SearchMenuItems}" />
+			<MenuItem Header="{l:Translate mnuView}" ItemsSource="{Binding ViewMenuItems}" />
 		</c:MesenMenu>
 
-		<StackPanel Orientation="Horizontal" DockPanel.Dock="Top" IsVisible="{CompiledBinding Config.ShowToolbar}">
-			<dc:ActionToolbar Items="{CompiledBinding ToolbarItems}" />
+		<StackPanel Orientation="Horizontal" DockPanel.Dock="Top" IsVisible="{Binding Config.ShowToolbar}">
+			<dc:ActionToolbar Items="{Binding ToolbarItems}" />
 		</StackPanel>
 
 		<Grid ColumnDefinitions="Auto,*,Auto,Auto" RowDefinitions="Auto" DockPanel.Dock="Bottom">
@@ -57,28 +57,28 @@
 			<c:ButtonWithIcon
 				Grid.Column="2"
 				Click="OnOpenTraceFile"
-				IsEnabled="{CompiledBinding AllowOpenTraceFile}"
+				IsEnabled="{Binding AllowOpenTraceFile}"
 				Icon="Assets/Folder.png"
 				Text="{l:Translate btnOpenTraceFile}"
 			/>
 			<c:ButtonWithIcon
 				Grid.Column="3"
 				Click="OnStartLoggingClick"
-				IsEnabled="{CompiledBinding IsStartLoggingEnabled}"
-				IsVisible="{CompiledBinding !IsLoggingToFile}"
+				IsEnabled="{Binding IsStartLoggingEnabled}"
+				IsVisible="{Binding !IsLoggingToFile}"
 				Icon="Assets/Record.png"
 				Text="{l:Translate btnStart}"
 			/>
 			<c:ButtonWithIcon
 				Grid.Column="3"
 				Click="OnStopLoggingClick"
-				IsVisible="{CompiledBinding IsLoggingToFile}"
+				IsVisible="{Binding IsLoggingToFile}"
 				Icon="Assets/MediaStop.png"
 				Text="{l:Translate btnStop}"
 			/>
 		</Grid>
 		
-		<TabControl ItemsSource="{CompiledBinding Tabs}" SelectedItem="{CompiledBinding SelectedTab}" Padding="1" DockPanel.Dock="Bottom">
+		<TabControl ItemsSource="{Binding Tabs}" SelectedItem="{Binding SelectedTab}" Padding="1" DockPanel.Dock="Bottom">
 			<TabControl.ItemTemplate>
 				<DataTemplate>
 					<StackPanel Orientation="Horizontal">
@@ -89,7 +89,7 @@
 			</TabControl.ItemTemplate>
 
 			<TabControl.ContentTemplate>
-				<DataTemplate>
+				<DataTemplate DataType="vm:TraceLoggerOptionTab">
 					<c:GroupBox Header="{Binding LogOptionsTitle}">
 						<StackPanel>
 							<Grid ColumnDefinitions="Auto,3,Auto,10,Auto,10,Auto" RowDefinitions="Auto,Auto,Auto" Margin="0 0 0 5">
@@ -114,8 +114,19 @@
 
 							<Grid ColumnDefinitions="Auto,*,Auto" RowDefinitions="Auto,Auto">
 								<CheckBox VerticalAlignment="Center" Content="{l:Translate chkCustomFormat}" IsChecked="{Binding Options.UseCustomFormat}" />
-								<TextBox Grid.Column="1" Text="{Binding Format}" IsReadOnly="True" IsVisible="{Binding !Options.UseCustomFormat}" Classes="readonlyFormat" />
-								<TextBox Grid.Column="1" Text="{Binding Options.Format}" IsVisible="{Binding Options.UseCustomFormat}" MaxLength="1000" />
+								<TextBox
+									Grid.Column="1"
+									Text="{Binding Format, Converter={StaticResource NullTextConverter}}"
+									IsReadOnly="True"
+									IsVisible="{Binding !Options.UseCustomFormat}"
+									Classes="readonlyFormat"
+								/>
+								<TextBox
+									Grid.Column="1"
+									Text="{Binding Options.Format, Converter={StaticResource NullTextConverter}}"
+									IsVisible="{Binding Options.UseCustomFormat}"
+									MaxLength="1000"
+								/>
 								<Image Grid.Row="0" Grid.Column="2" Source="/Assets/Help.png" ToolTip.Tip="{Binding FormatTooltip}" ToolTip.Placement="Right" ToolTip.ShowDelay="0" />
 								
 								<TextBlock VerticalAlignment="Center" Grid.Row="1" Text="{l:Translate lblCondition}" />
@@ -137,7 +148,10 @@
 										ToolTip.Placement="Right"
 										ToolTip.ShowDelay="0"
 									/>
-									<TextBox Text="{Binding Options.Condition}" MaxLength="1000" />
+									<TextBox
+										Text="{Binding Options.Condition, Converter={StaticResource NullTextConverter}}"
+										MaxLength="1000"
+									/>
 								</DockPanel>
 							</Grid>
 						</StackPanel>
@@ -147,35 +161,44 @@
 		</TabControl>
 
 		<Border BorderBrush="Gray" BorderThickness="1">
-			<DockPanel>
+			<Grid ColumnDefinitions="*,Auto" RowDefinitions="*,Auto">
 				<ScrollBar
-					DockPanel.Dock="Right"
+					Grid.Column="1"
 					Orientation="Vertical"
 					VerticalAlignment="Stretch"
 					AllowAutoHide="False"
-					Minimum="{CompiledBinding MinScrollPosition}"
-					Maximum="{CompiledBinding MaxScrollPosition}"
-					Value="{CompiledBinding ScrollPosition}"
+					Minimum="{Binding MinScrollPosition}"
+					Maximum="{Binding MaxScrollPosition}"
+					Value="{Binding ScrollPosition}"
 				/>
+				
+				<ScrollBar
+					Orientation="Horizontal"
+					Grid.Row="1"
+					Maximum="{Binding #disViewer.HorizontalScrollMaxPosition}"
+					Value="{Binding #disViewer.HorizontalScrollPosition}"
+				/>
+
+				<Panel Grid.Row="1" Grid.Column="1" Background="{DynamicResource ButtonBackground}" />
 
 				<Panel>
 					<dc:DisassemblyViewer
 						Name="disViewer"
-						Lines="{CompiledBinding TraceLogLines}"
+						Lines="{Binding TraceLogLines}"
 						FontFamily="{DynamicResource MesenDisassemblyFont}"
 						FontSize="{DynamicResource MesenDisassemblyFontSize}"
-						StyleProvider="{CompiledBinding StyleProvider}"
-						SearchString="{CompiledBinding QuickSearch.SearchString}"
-						ShowByteCode="{CompiledBinding ShowByteCode}"
+						StyleProvider="{Binding StyleProvider}"
+						SearchString="{Binding QuickSearch.SearchString}"
+						ShowByteCode="{Binding ShowByteCode}"
 					/>
 
 					<dv:QuickSearchView
-						DataContext="{CompiledBinding QuickSearch}"
+						DataContext="{Binding QuickSearch}"
 						VerticalAlignment="Top"
 						HorizontalAlignment="Right"
 					/>
 				</Panel>
-			</DockPanel>
+			</Grid>
 		</Border>
 	</DockPanel>
 </Window>

@@ -35,9 +35,10 @@ struct MemoryOperationInfo
 enum class BreakpointTypeFlags
 {
 	None = 0,
-	Execute = 1,
-	Read = 2,
-	Write = 4,
+	Read = 1,
+	Write = 2,
+	Execute = 4,
+	Forbid = 8,
 };
 
 enum class BreakpointType
@@ -45,15 +46,7 @@ enum class BreakpointType
 	Execute = 0,
 	Read = 1,
 	Write = 2,
-};
-
-enum class BreakpointCategory
-{
-	Snes = 0,
-	SnesVideoRam = 1,
-	Oam = 2,
-	CgRam = 3,
-	Spc = 4
+	Forbid = 3,
 };
 
 namespace CdlFlags
@@ -154,7 +147,7 @@ struct CodeLineData
 	uint16_t Flags;
 
 	EffectiveAddressInfo EffectiveAddress;
-	uint16_t Value;
+	uint32_t Value;
 	CpuType LineCpuType;
 
 	uint8_t ByteCode[8];
@@ -207,7 +200,10 @@ enum class TileFormat
 	PceBackgroundBpp2Cg0,
 	PceBackgroundBpp2Cg1,
 	SmsBpp4,
-	SmsSgBpp1
+	SmsSgBpp1,
+	GbaBpp4,
+	GbaBpp8,
+	WsBpp4Packed
 };
 
 enum class TileLayout
@@ -282,6 +278,7 @@ struct StackFrameInfo
 	uint32_t Target;
 	AddressInfo AbsTarget;
 	uint32_t Return;
+	uint32_t ReturnStackPointer;
 	AddressInfo AbsReturn;
 	StackFrameFlags Flags;
 };
@@ -306,17 +303,19 @@ enum class BreakSource
 	CpuStep,
 	PpuStep,
 
+	Irq,
+	Nmi,
+
 	//Used by DebugBreakHelper, prevents debugger getting focus
 	InternalOperation,
 
+	//Everything after InternalOperation is treated as an "Exception"
+	//Forbid breakpoints can block these, but not the other types above
 	BreakOnBrk,
 	BreakOnCop,
 	BreakOnWdm,
 	BreakOnStp,
 	BreakOnUninitMemoryRead,
-
-	Irq,
-	Nmi,
 	
 	GbInvalidOamAccess,
 	GbInvalidVramAccess,
@@ -334,8 +333,14 @@ enum class BreakSource
 	NesBreakOnExtOutputMode,
 
 	PceBreakOnInvalidVramAddress,
-
+	
 	SmsNopLoad,
+
+	GbaInvalidOpCode,
+	GbaNopLoad,
+	GbaUnalignedMemoryAccess,
+
+	BreakOnUndefinedOpCode
 };
 
 struct BreakEvent
@@ -361,19 +366,29 @@ enum class StepType
 	StepBack
 };
 
+enum class BreakType
+{
+	None = 0,
+	User = 1,
+	Exception = 2,
+	Both = 3
+};
+
 struct StepRequest
 {
+	int64_t BreakAddress = -1;
+	int64_t BreakStackPointer = -1;
 	int32_t StepCount = -1;
 	int32_t PpuStepCount = -1;
 	int32_t CpuCycleStepCount = -1;
-	int32_t BreakAddress = -1;
 	int32_t BreakScanline = INT32_MIN;
 	StepType Type = StepType::Step;
 	
 	bool HasRequest = false;
 
-	bool BreakNeeded = false;
+	BreakType BreakNeeded = BreakType::None;
 	BreakSource Source = BreakSource::Unspecified;
+	BreakSource ExSource = BreakSource::Unspecified;
 
 	StepRequest()
 	{
@@ -391,31 +406,66 @@ struct StepRequest
 		PpuStepCount = obj.PpuStepCount;
 		CpuCycleStepCount = obj.CpuCycleStepCount;
 		BreakAddress = obj.BreakAddress;
+		BreakStackPointer = obj.BreakStackPointer;
 		BreakScanline = obj.BreakScanline;
 		HasRequest = (StepCount != -1 || PpuStepCount != -1 || BreakAddress != -1 || BreakScanline != INT32_MIN || CpuCycleStepCount != -1);
 	}
 
-	__forceinline void SetBreakSource(BreakSource source)
+	void ClearException()
 	{
-		if(Source == BreakSource::Unspecified) {
-			Source = source;
+		ExSource = BreakSource::Unspecified;
+		ClearBreakType(BreakType::Exception);
+	}
+
+	__forceinline void SetBreakSource(BreakSource source, bool breakNeeded)
+	{
+		if(source > BreakSource::InternalOperation) {
+			if(ExSource == BreakSource::Unspecified) {
+				ExSource = source;
+			}
+
+			if(breakNeeded) {
+				SetBreakType(BreakType::Exception);
+			}
+		} else {
+			if(Source == BreakSource::Unspecified) {
+				Source = source;
+			}
+
+			if(breakNeeded) {
+				SetBreakType(BreakType::User);
+			}
 		}
 	}
 
 	BreakSource GetBreakSource()
 	{
+		if(ExSource != BreakSource::Unspecified) {
+			return ExSource;
+		}
+
 		if(Source == BreakSource::Unspecified) {
 			if(BreakScanline != INT32_MIN || PpuStepCount >= 0) {
 				return BreakSource::PpuStep;
 			}
 		}
+
 		return Source;
+	}
+
+	__forceinline void SetBreakType(BreakType type)
+	{
+		BreakNeeded = (BreakType)((int)BreakNeeded | (int)type);
+	}
+
+	__forceinline void ClearBreakType(BreakType type)
+	{
+		BreakNeeded = (BreakType)((int)BreakNeeded & ~(int)type);
 	}
 
 	__forceinline void Break(BreakSource src)
 	{
-		BreakNeeded = true;
-		SetBreakSource(src);
+		SetBreakSource(src, true);
 	}
 
 	__forceinline void ProcessCpuExec()
@@ -423,8 +473,7 @@ struct StepRequest
 		if(StepCount > 0) {
 			StepCount--;
 			if(StepCount == 0) {
-				BreakNeeded = true;
-				SetBreakSource(BreakSource::CpuStep);
+				SetBreakSource(BreakSource::CpuStep, true);
 			}
 		}
 	}
@@ -434,8 +483,7 @@ struct StepRequest
 		if(CpuCycleStepCount > 0) {
 			CpuCycleStepCount--;
 			if(CpuCycleStepCount == 0) {
-				BreakNeeded = true;
-				SetBreakSource(BreakSource::CpuStep);
+				SetBreakSource(BreakSource::CpuStep, true);
 				return true;
 			}
 		}
@@ -446,13 +494,11 @@ struct StepRequest
 	{
 		if(forNmi) {
 			if(Type == StepType::RunToNmi) {
-				BreakNeeded = true;
-				SetBreakSource(BreakSource::Nmi);
+				SetBreakSource(BreakSource::Nmi, true);
 			}
 		} else {
 			if(Type == StepType::RunToIrq) {
-				BreakNeeded = true;
-				SetBreakSource(BreakSource::Irq);
+				SetBreakSource(BreakSource::Irq, true);
 			}
 		}
 	}
@@ -479,6 +525,8 @@ struct DebugControllerState
 	bool Y;
 	bool L;
 	bool R;
+	bool U;
+	bool D;
 	bool Up;
 	bool Down;
 	bool Left;
@@ -488,6 +536,6 @@ struct DebugControllerState
 
 	bool HasPressedButton()
 	{
-		return A || B || X || Y || L || R || Up || Down || Left || Right || Select || Start;
+		return A || B || X || Y || L || R || U || D || Up || Down || Left || Right || Select || Start;
 	}
 };

@@ -11,11 +11,13 @@ namespace Mesen.Utilities
 	public static class FolderHelper
 	{
 		private static HashSet<string> _romExtensions = new HashSet<string>() {
-			".sfc", ".smc", ".fig", ".swc", ".bs",
-			".gb", ".gbc",
-			".nes", ".unif", ".unf", ".fds", ".studybox",
+			".sfc", ".smc", ".fig", ".swc", ".bs", ".st",
+			".gb", ".gbc", ".gbx",
+			".nes", ".unif", ".unf", ".fds", ".qd", ".studybox",
 			".pce", ".sgx", ".cue",
-			".sms", ".gg", ".sg"
+			".sms", ".gg", ".sg", ".col",
+			".gba",
+			".ws", ".wsc"
 		};
 
 		public static bool IsRomFile(string path)

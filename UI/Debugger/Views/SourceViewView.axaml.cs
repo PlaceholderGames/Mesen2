@@ -23,7 +23,7 @@ using System.Diagnostics.CodeAnalysis;
 
 namespace Mesen.Debugger.Views
 {
-	public class SourceViewView : UserControl
+	public class SourceViewView : MesenUserControl
 	{
 		private SourceViewViewModel Model => (SourceViewViewModel)DataContext!;
 		private LocationInfo ActionLocation => _selectionHandler?.ActionLocation ?? new LocationInfo();
@@ -61,8 +61,15 @@ namespace Mesen.Debugger.Views
 		protected override void OnDataContextChanged(EventArgs e)
 		{
 			if(DataContext is SourceViewViewModel model && _model != model) {
+				if(_model != null) {
+					model.VisibleRowCount = _model.VisibleRowCount;
+				}
 				_model = model;
-				_selectionHandler = new CodeViewerSelectionHandler(_viewer, _model, (rowIndex, rowAddress) => rowIndex + _model.ScrollPosition, true);
+				_model.SetViewer(_viewer);
+				_selectionHandler?.Dispose();
+				if(model != null) {
+					_selectionHandler = new CodeViewerSelectionHandler(_viewer, _model, (rowIndex, rowAddress) => rowIndex + _model.ScrollPosition, true);
+				}
 			}
 			base.OnDataContextChanged(e);
 		}
@@ -216,7 +223,7 @@ namespace Mesen.Debugger.Views
 			};
 
 			actions.AddRange(GetBreakpointContextMenu());
-			DebugShortcutManager.CreateContextMenu(_viewer, actions);
+			AddDisposables(DebugShortcutManager.CreateContextMenu(_viewer, actions));
 		}
 
 		private void GoToLocation(LocationInfo loc)
@@ -256,6 +263,7 @@ namespace Mesen.Debugger.Views
 
 			switch(type) {
 				case CodeSegmentType.OpCode:
+				case CodeSegmentType.Token:
 				case CodeSegmentType.Address:
 				case CodeSegmentType.Label:
 				case CodeSegmentType.ImmediateValue:
@@ -331,6 +339,17 @@ namespace Mesen.Debugger.Views
 						}
 					}
 				},
+				new ContextMenuSeparator() { IsVisible = () => IsMarginClick },
+				new ContextMenuAction() {
+					ActionType = ActionType.ToggleForbidBreakpoint,
+					HintText = () => GetHint(ActionLocation),
+					IsVisible = () => IsMarginClick,
+					OnClick = () => {
+						if(ActionLocation.AbsAddress != null) {
+							BreakpointManager.ToggleForbidBreakpoint(ActionLocation.AbsAddress.Value, CpuType);
+						}
+					}
+				}
 			};
 		}
 
@@ -369,6 +388,10 @@ namespace Mesen.Debugger.Views
 			}
 
 			_model?.SetViewer(_viewer);
+			if(_model?.ActiveAddress != null) {
+				//Go to active address when clicking on the source view tab
+				_model?.GoToRelativeAddress(_model.ActiveAddress.Value, true);
+			}
 			FocusViewer();
 		}
 

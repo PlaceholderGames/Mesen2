@@ -19,7 +19,7 @@ using Avalonia.Controls.Selection;
 
 namespace Mesen.Debugger.ViewModels
 {
-	public class BreakpointListViewModel : ViewModelBase
+	public class BreakpointListViewModel : DisposableViewModel
 	{
 		[Reactive] public MesenList<BreakpointViewModel> Breakpoints { get; private set; } = new();
 		[Reactive] public SelectionModel<BreakpointViewModel?> Selection { get; set; } = new() { SingleSelect = false };
@@ -74,15 +74,26 @@ namespace Mesen.Debugger.ViewModels
 
 		public void InitContextMenu(Control parent)
 		{
-			DebugShortcutManager.CreateContextMenu(parent, new object[] {
+			AddDisposables(DebugShortcutManager.CreateContextMenu(parent, new object[] {
 				new ContextMenuAction() {
-					ActionType = ActionType.Add,
+					ActionType = ActionType.AddBreakpoint,
 					Shortcut = () => ConfigManager.Config.Debug.Shortcuts.Get(DebuggerShortcut.BreakpointList_Add),
 					OnClick = () => {
 						Breakpoint bp = new Breakpoint() { BreakOnRead = true, BreakOnWrite = true, BreakOnExec = true, CpuType = CpuType };
 						BreakpointEditWindow.EditBreakpoint(bp, parent);
 					}
 				},
+
+				new ContextMenuAction() {
+					ActionType = ActionType.AddForbidBreakpoint,
+					Shortcut = () => ConfigManager.Config.Debug.Shortcuts.Get(DebuggerShortcut.BreakpointList_AddForbid),
+					OnClick = () => {
+						Breakpoint bp = new Breakpoint() { Forbid = true, CpuType = CpuType };
+						BreakpointEditWindow.EditBreakpoint(bp, parent);
+					}
+				},
+
+				new ContextMenuSeparator(),
 
 				new ContextMenuAction() {
 					ActionType = ActionType.Edit,
@@ -138,9 +149,9 @@ namespace Mesen.Debugger.ViewModels
 				new ContextMenuAction() {
 					ActionType = ActionType.GoToLocation,
 					Shortcut = () => ConfigManager.Config.Debug.Shortcuts.Get(DebuggerShortcut.BreakpointList_GoToLocation),
-					IsEnabled = () => Selection.SelectedItems.Count == 1 && Selection.SelectedItem is BreakpointViewModel vm && vm.Breakpoint.IsCpuBreakpoint && vm.Breakpoint.GetRelativeAddress() >= 0,
+					IsEnabled = () => Selection.SelectedItems.Count == 1 && Selection.SelectedItem is BreakpointViewModel vm && vm.Breakpoint.SupportsExec && vm.Breakpoint.GetRelativeAddress() >= 0,
 					OnClick = () => {
-						if(Selection.SelectedItem is BreakpointViewModel vm && vm.Breakpoint.IsCpuBreakpoint) {
+						if(Selection.SelectedItem is BreakpointViewModel vm && vm.Breakpoint.SupportsExec) {
 							int addr = vm.Breakpoint.GetRelativeAddress();
 							if(addr >= 0) {
 								Debugger.ScrollToAddress(addr);
@@ -159,27 +170,27 @@ namespace Mesen.Debugger.ViewModels
 						}
 					}
 				}
-			});
+			}));
+		}
+	}
+
+	public class BreakpointViewModel : INotifyPropertyChanged
+	{
+		public Breakpoint Breakpoint { get; set; }
+		public string TypeDisplay => Breakpoint.ToReadableType();
+		public string AddressDisplay => Breakpoint.GetAddressString(true);
+
+		public event PropertyChangedEventHandler? PropertyChanged;
+
+		public void Refresh()
+		{
+			PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(TypeDisplay)));
+			PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(AddressDisplay)));
 		}
 
-		public class BreakpointViewModel : INotifyPropertyChanged
+		public BreakpointViewModel(Breakpoint bp)
 		{
-			public Breakpoint Breakpoint { get; set; }
-			public string TypeDisplay => Breakpoint.ToReadableType();
-			public string AddressDisplay => Breakpoint.GetAddressString(true);
-
-			public event PropertyChangedEventHandler? PropertyChanged;
-
-			public void Refresh()
-			{
-				PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(TypeDisplay)));
-				PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(AddressDisplay)));
-			}
-
-			public BreakpointViewModel(Breakpoint bp)
-			{
-				Breakpoint = bp;
-			}
+			Breakpoint = bp;
 		}
 	}
 }

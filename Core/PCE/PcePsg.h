@@ -8,6 +8,7 @@
 class Emulator;
 class PceConsole;
 class SoundMixer;
+struct PcEngineConfig;
 struct blip_t;
 
 class PcePsg final : public ISerializable
@@ -31,6 +32,9 @@ private:
 	int16_t _prevRightOutput = 0;
 
 	uint32_t _clockCounter = 0;
+	
+	void UpdateOutput(PcEngineConfig& cfg);
+	void UpdateSoundOffset();
 
 public:
 	PcePsg(Emulator* emu, PceConsole* console);
@@ -45,6 +49,8 @@ public:
 
 	void Write(uint16_t addr, uint8_t value);
 	void Run();
+
+	void PlayQueuedAudio();
 
 	void Serialize(Serializer& s) override;
 };

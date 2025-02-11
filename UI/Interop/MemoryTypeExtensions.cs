@@ -25,6 +25,12 @@ namespace Mesen.Interop
 				case MemoryType.Cx4Memory:
 					return CpuType.Cx4;
 
+				case MemoryType.St018Memory:
+				case MemoryType.St018PrgRom:
+				case MemoryType.St018DataRom:
+				case MemoryType.St018WorkRam:
+					return CpuType.St018;
+
 				case MemoryType.DspDataRam:
 				case MemoryType.DspDataRom:
 				case MemoryType.DspProgramRom:
@@ -49,6 +55,7 @@ namespace Mesen.Interop
 				case MemoryType.NesChrRom:
 				case MemoryType.NesInternalRam:
 				case MemoryType.NesNametableRam:
+				case MemoryType.NesMapperRam:
 				case MemoryType.NesPaletteRam:
 				case MemoryType.NesSpriteRam:
 				case MemoryType.NesPpuMemory:
@@ -64,6 +71,9 @@ namespace Mesen.Interop
 				case MemoryType.SnesCgRam:
 				case MemoryType.BsxPsRam:
 				case MemoryType.BsxMemoryPack:
+				case MemoryType.SufamiTurboFirmware:
+				case MemoryType.SufamiTurboSecondCart:
+				case MemoryType.SufamiTurboSecondCartRam:
 				case MemoryType.SnesRegister:
 					return CpuType.Snes;
 
@@ -91,6 +101,27 @@ namespace Mesen.Interop
 				case MemoryType.SmsPaletteRam:
 				case MemoryType.SmsPort:
 					return CpuType.Sms;
+
+				case MemoryType.GbaPrgRom:
+				case MemoryType.GbaBootRom:
+				case MemoryType.GbaSaveRam:
+				case MemoryType.GbaIntWorkRam:
+				case MemoryType.GbaExtWorkRam:
+				case MemoryType.GbaVideoRam:
+				case MemoryType.GbaSpriteRam:
+				case MemoryType.GbaPaletteRam:
+				case MemoryType.GbaMemory:
+					return CpuType.Gba;
+
+				case MemoryType.WsMemory:
+				case MemoryType.WsPrgRom:
+				case MemoryType.WsWorkRam:
+				case MemoryType.WsCartRam:
+				case MemoryType.WsCartEeprom:
+				case MemoryType.WsBootRom:
+				case MemoryType.WsInternalEeprom:
+				case MemoryType.WsPort:
+					return CpuType.Ws;
 
 				default:
 					throw new NotImplementedException("Unsupported cpu type");
@@ -125,6 +156,9 @@ namespace Mesen.Interop
 				case MemoryType.SmsPaletteRam:
 					return true;
 
+				case MemoryType.GbaVideoRam:
+					return true;
+
 				default:
 					return false;
 			}
@@ -135,6 +169,7 @@ namespace Mesen.Interop
 			switch(memType) {
 				case MemoryType.SnesRegister:
 				case MemoryType.SmsPort:
+				case MemoryType.WsPort:
 					return false;
 			}
 			return true;
@@ -167,6 +202,12 @@ namespace Mesen.Interop
 				case MemoryType.SmsBootRom:
 				case MemoryType.SmsPaletteRam:
 				case MemoryType.SmsPort:
+				
+				case MemoryType.GbaBootRom:
+				case MemoryType.GbaPaletteRam:
+				case MemoryType.GbaSpriteRam:
+
+				case MemoryType.WsPort:
 					return false;
 			}
 
@@ -182,11 +223,14 @@ namespace Mesen.Interop
 				case MemoryType.GsuMemory:
 				case MemoryType.NecDspMemory:
 				case MemoryType.Cx4Memory:
+				case MemoryType.St018Memory:
 				case MemoryType.GameboyMemory:
 				case MemoryType.NesMemory:
 				case MemoryType.NesPpuMemory:
 				case MemoryType.PceMemory:
 				case MemoryType.SmsMemory:
+				case MemoryType.GbaMemory:
+				case MemoryType.WsMemory:
 					return true;
 			}
 			return false;
@@ -203,9 +247,16 @@ namespace Mesen.Interop
 				case MemoryType.PcePrgRom:
 				case MemoryType.DspDataRom:
 				case MemoryType.DspProgramRom:
+				case MemoryType.St018PrgRom:
+				case MemoryType.St018DataRom:
+				case MemoryType.SufamiTurboFirmware:
+				case MemoryType.SufamiTurboSecondCart:
 				case MemoryType.SpcRom:
 				case MemoryType.SmsPrgRom:
 				case MemoryType.SmsBootRom:
+				case MemoryType.GbaPrgRom:
+				case MemoryType.GbaBootRom:
+				case MemoryType.WsPrgRom:
 					return true;
 			}
 			return false;
@@ -222,7 +273,14 @@ namespace Mesen.Interop
 				case MemoryType.SpcRam:
 				case MemoryType.SpcRom:
 				case MemoryType.Sa1InternalRam:
-				
+				case MemoryType.St018Memory:
+				case MemoryType.St018PrgRom:
+				case MemoryType.St018DataRom:
+				case MemoryType.St018WorkRam:
+				case MemoryType.SufamiTurboFirmware:
+				case MemoryType.SufamiTurboSecondCart:
+				case MemoryType.SufamiTurboSecondCartRam:
+
 				//Gameboy
 				case MemoryType.GbPrgRom:
 				case MemoryType.GbWorkRam:
@@ -236,6 +294,7 @@ namespace Mesen.Interop
 				case MemoryType.NesWorkRam:
 				case MemoryType.NesSaveRam:
 				case MemoryType.NesInternalRam:
+				case MemoryType.NesMapperRam:
 				case MemoryType.NesMemory:
 
 				//PC Engine
@@ -253,6 +312,27 @@ namespace Mesen.Interop
 				case MemoryType.SmsBootRom:
 				case MemoryType.SmsPort:
 					return true;
+
+				//GBA
+				case MemoryType.GbaMemory:
+				case MemoryType.GbaPrgRom:
+				case MemoryType.GbaBootRom:
+				case MemoryType.GbaSaveRam:
+				case MemoryType.GbaIntWorkRam:
+				case MemoryType.GbaExtWorkRam:
+				case MemoryType.GbaVideoRam:
+				case MemoryType.GbaSpriteRam:
+				case MemoryType.GbaPaletteRam:
+					return true;
+
+				//WS
+				case MemoryType.WsMemory:
+				case MemoryType.WsPrgRom:
+				case MemoryType.WsWorkRam:
+				case MemoryType.WsCartRam:
+				case MemoryType.WsBootRom:
+				case MemoryType.WsPort:
+					return true;
 			}
 
 			return false;
@@ -267,10 +347,13 @@ namespace Mesen.Interop
 				case MemoryType.GsuMemory:
 				case MemoryType.NecDspMemory:
 				case MemoryType.Cx4Memory:
+				case MemoryType.St018Memory:
 				case MemoryType.GameboyMemory:
 				case MemoryType.NesMemory:
 				case MemoryType.PceMemory:
 				case MemoryType.SmsMemory:
+				case MemoryType.GbaMemory:
+				case MemoryType.WsMemory:
 					return true;
 			}
 
@@ -298,6 +381,12 @@ namespace Mesen.Interop
 
 				case MemoryType.SmsMemory:
 				case MemoryType.SmsPrgRom:
+
+				case MemoryType.GbaMemory:
+				case MemoryType.GbaPrgRom:
+
+				case MemoryType.WsMemory:
+				case MemoryType.WsPrgRom:
 					return true;
 
 				case MemoryType.NesPpuMemory:
@@ -321,17 +410,20 @@ namespace Mesen.Interop
 
 		public static bool SupportsExecBreakpoints(this MemoryType memType)
 		{
-			if(memType.IsPpuMemory()) {
-				return false;
-			}
-
 			switch(memType) {
 				case MemoryType.PceAdpcmRam:
 				case MemoryType.SmsPort:
+				case MemoryType.WsPort:
 					return false;
-			}
 
-			return true;
+				case MemoryType.GbaVideoRam:
+				case MemoryType.GbaSpriteRam:
+				case MemoryType.GbaPaletteRam:
+					return true;
+
+				default:
+					return !memType.IsPpuMemory();
+			}
 		}
 
 
@@ -349,6 +441,7 @@ namespace Mesen.Interop
 				MemoryType.GsuMemory => "GSU",
 				MemoryType.NecDspMemory => "DSP",
 				MemoryType.Cx4Memory => "CX4",
+				MemoryType.St018Memory => "ARM",
 
 				MemoryType.SnesPrgRom => "PRG",
 				MemoryType.SnesWorkRam => "WRAM",
@@ -366,12 +459,20 @@ namespace Mesen.Interop
 				MemoryType.DspDataRam => "RAM",
 				MemoryType.DspDataRom => "ROM",
 
+				MemoryType.St018PrgRom => "PRG",
+				MemoryType.St018DataRom => "ROM",
+				MemoryType.St018WorkRam => "RAM",
+
 				MemoryType.Sa1InternalRam => "IRAM",
 				MemoryType.Cx4DataRam => "DATA",
 				MemoryType.GsuWorkRam => "GWRAM",
 
 				MemoryType.BsxPsRam => "PSRAM",
 				MemoryType.BsxMemoryPack => "MPACK",
+				
+				MemoryType.SufamiTurboFirmware => "BOOT",
+				MemoryType.SufamiTurboSecondCart => "BPRG",
+				MemoryType.SufamiTurboSecondCartRam => "BRAM",
 
 				MemoryType.GameboyMemory => "CPU",
 				MemoryType.GbPrgRom => "PRG",
@@ -387,6 +488,7 @@ namespace Mesen.Interop
 				MemoryType.NesPrgRom => "PRG",
 				MemoryType.NesWorkRam => "WRAM",
 				MemoryType.NesSaveRam => "SRAM",
+				MemoryType.NesMapperRam => "EXRAM",
 				MemoryType.NesInternalRam => "RAM",
 
 				MemoryType.NesSpriteRam => "SPR",
@@ -419,10 +521,42 @@ namespace Mesen.Interop
 				MemoryType.SmsPaletteRam => "PAL",
 				MemoryType.SmsPort => "PORT",
 
+				MemoryType.GbaMemory => "CPU",
+				MemoryType.GbaPrgRom => "ROM",
+				MemoryType.GbaBootRom => "BIOS",
+				MemoryType.GbaSaveRam => "SRAM",
+				MemoryType.GbaIntWorkRam => "IWRAM",
+				MemoryType.GbaExtWorkRam => "EWRAM",
+				MemoryType.GbaVideoRam => "VRAM",
+				MemoryType.GbaSpriteRam => "OAM",
+				MemoryType.GbaPaletteRam => "PAL",
+
+				MemoryType.WsMemory => "CPU",
+				MemoryType.WsPrgRom => "ROM",
+				MemoryType.WsWorkRam => "WRAM",
+				MemoryType.WsCartRam => "SRAM",
+				MemoryType.WsCartEeprom => "EEPROM",
+				MemoryType.WsBootRom => "BOOT",
+				MemoryType.WsInternalEeprom => "IEEPROM",
+				MemoryType.WsPort => "PORT",
+
 				MemoryType.None => "n/a",
 
 				_ => throw new Exception("invalid type"),
 			};
+		}
+
+		public static bool IsUnmapped(this MemoryType memoryType)
+		{
+			switch(memoryType) {
+				case MemoryType.SmsPort:
+				case MemoryType.WsPort:
+				case MemoryType.WsCartEeprom:
+				case MemoryType.WsInternalEeprom:
+					return true;
+			}
+
+			return false;
 		}
 
 		public static string GetFormatString(this MemoryType memType)

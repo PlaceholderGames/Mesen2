@@ -6,6 +6,7 @@
 #include "Debugger/MemoryDumper.h"
 #include "Debugger/ScriptingContext.h"
 #include "Debugger/MemoryAccessCounter.h"
+#include "Debugger/CdlManager.h"
 #include "Debugger/LabelManager.h"
 #include "Shared/SystemActionManager.h"
 #include "Shared/Video/DebugHud.h"
@@ -90,8 +91,13 @@ int LuaApi::GetLibrary(lua_State *lua)
 
 		{ "read", LuaApi::ReadMemory },
 		{ "write", LuaApi::WriteMemory },
-		{ "readWord", LuaApi::ReadMemoryWord },
-		{ "writeWord", LuaApi::WriteMemoryWord },
+		{ "read16", LuaApi::ReadMemory16 },
+		{ "write16", LuaApi::WriteMemory16 },
+		{ "read32", LuaApi::ReadMemory32 },
+		{ "write32", LuaApi::WriteMemory32 },
+
+		{ "readWord", LuaApi::ReadMemory16 }, //for backward compatibility
+		{ "writeWord", LuaApi::WriteMemory16 }, //for backward compatibility
 		
 		{ "convertAddress", LuaApi::ConvertAddress },
 		{ "getLabelAddress", LuaApi::GetLabelAddress },
@@ -135,6 +141,8 @@ int LuaApi::GetLibrary(lua_State *lua)
 
 		{ "getAccessCounters", LuaApi::GetAccessCounters },
 		{ "resetAccessCounters", LuaApi::ResetAccessCounters },
+
+		{ "getCdlData", LuaApi::GetCdlData},
 
 		{ "addCheat", LuaApi::AddCheat },
 		{ "clearCheats", LuaApi::ClearCheats },
@@ -266,7 +274,7 @@ int LuaApi::WriteMemory(lua_State *lua)
 	return l.ReturnCount();
 }
 
-int LuaApi::ReadMemoryWord(lua_State *lua)
+int LuaApi::ReadMemory16(lua_State *lua)
 {
 	LuaCallHelper l(lua);
 	l.ForceParamCount(3);
@@ -278,12 +286,29 @@ int LuaApi::ReadMemoryWord(lua_State *lua)
 	checkminparams(2);
 	errorCond(address < 0, "address must be >= 0");
 	checkEnum(MemoryType, memType, "invalid memory type");
-	uint16_t value = _memoryDumper->GetMemoryValueWord(memType, address, disableSideEffects);
+	uint16_t value = _memoryDumper->GetMemoryValue16(memType, address, disableSideEffects);
 	l.Return(returnSignedValue ? (int16_t)value : value);
 	return l.ReturnCount();
 }
 
-int LuaApi::WriteMemoryWord(lua_State *lua)
+int LuaApi::ReadMemory32(lua_State* lua)
+{
+	LuaCallHelper l(lua);
+	l.ForceParamCount(3);
+	bool returnSignedValue = l.ReadBool();
+	int type = l.ReadInteger();
+	bool disableSideEffects = (type & 0x100) == 0x100;
+	MemoryType memType = (MemoryType)(type & 0xFF);
+	int address = l.ReadInteger();
+	checkminparams(2);
+	errorCond(address < 0, "address must be >= 0");
+	checkEnum(MemoryType, memType, "invalid memory type");
+	uint32_t value = _memoryDumper->GetMemoryValue32(memType, address, disableSideEffects);
+	l.Return(returnSignedValue ? (int32_t)value : value);
+	return l.ReturnCount();
+}
+
+int LuaApi::WriteMemory16(lua_State *lua)
 {
 	LuaCallHelper l(lua);
 	int type = l.ReadInteger();
@@ -295,7 +320,22 @@ int LuaApi::WriteMemoryWord(lua_State *lua)
 	errorCond(value > 65535 || value < -32768, "value out of range");
 	errorCond(address < 0, "address must be >= 0");
 	checkEnum(MemoryType, memType, "invalid memory type");
-	_memoryDumper->SetMemoryValueWord(memType, address, value, disableSideEffects);
+	_memoryDumper->SetMemoryValue16(memType, address, value, disableSideEffects);
+	return l.ReturnCount();
+}
+
+int LuaApi::WriteMemory32(lua_State* lua)
+{
+	LuaCallHelper l(lua);
+	int type = l.ReadInteger();
+	bool disableSideEffects = (type & 0x100) == 0x100;
+	MemoryType memType = (MemoryType)(type & 0xFF);
+	int value = l.ReadInteger();
+	int address = l.ReadInteger();
+	checkparams();
+	errorCond(address < 0, "address must be >= 0");
+	checkEnum(MemoryType, memType, "invalid memory type");
+	_memoryDumper->SetMemoryValue32(memType, address, value, disableSideEffects);
 	return l.ReturnCount();
 }
 
@@ -552,7 +592,7 @@ FrameInfo LuaApi::InternalGetScreenSize()
 	unique_ptr<BaseVideoFilter> filter(_emu->GetVideoFilter());
 	filter->SetBaseFrameInfo(frameSize);
 	filter->SetOverscan({});
-	return filter->GetFrameInfo();
+	return filter->GetFrameInfo((uint16_t*)frame.FrameBuffer, false);
 }
 
 int LuaApi::GetScreenSize(lua_State* lua)
@@ -910,6 +950,31 @@ int LuaApi::ResetAccessCounters(lua_State *lua)
 	checkparams();
 	_debugger->GetMemoryAccessCounter()->ResetCounts();
 	return l.ReturnCount();
+}
+
+int LuaApi::GetCdlData(lua_State* lua)
+{
+	LuaCallHelper l(lua);
+	MemoryType memoryType = (MemoryType)l.ReadInteger();
+	checkEnum(MemoryType, memoryType, "Invalid memory type");
+	checkparams();
+
+	if(!_debugger->GetCdlManager()->GetCodeDataLogger(memoryType)) {
+		error("This memory type does not support CDL data (only some ROM memory types support it)");
+	}
+
+	uint32_t size = _memoryDumper->GetMemorySize(memoryType);
+	vector<uint8_t> cdlData;
+	cdlData.resize(size, {});
+	_debugger->GetCdlManager()->GetCdlData(0, size, memoryType, cdlData.data());
+
+	lua_newtable(lua);
+	for(uint32_t i = 0; i < size; i++) {
+		lua_pushinteger(lua, cdlData[i]);
+		lua_rawseti(lua, -2, i);
+	}
+
+	return 1;
 }
 
 int LuaApi::GetScriptDataFolder(lua_State *lua)

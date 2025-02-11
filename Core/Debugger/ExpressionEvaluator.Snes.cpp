@@ -24,8 +24,8 @@ unordered_map<string, int64_t>& ExpressionEvaluator::GetSnesTokens()
 		{ "pscarry", EvalValues::RegPS_Carry },
 		{ "pszero", EvalValues::RegPS_Zero },
 		{ "psinterrupt", EvalValues::RegPS_Interrupt },
-		{ "psindex", EvalValues::RegPS_Memory },
-		{ "psmemory", EvalValues::RegPS_Index },
+		{ "psindex", EvalValues::RegPS_Index },
+		{ "psmemory", EvalValues::RegPS_Memory },
 		{ "psdecimal", EvalValues::RegPS_Decimal },
 		{ "psoverflow", EvalValues::RegPS_Overflow },
 		{ "psnegative", EvalValues::RegPS_Negative },
@@ -52,7 +52,7 @@ int64_t ExpressionEvaluator::GetSnesTokenValue(int64_t token, EvalResultType& re
 		case EvalValues::RegDB: return s.DBR;
 		case EvalValues::RegD: return s.D;
 		case EvalValues::RegPC: return (s.K << 16) | s.PC;
-		case EvalValues::Nmi: return ReturnBool(s.NmiFlag, resultType);
+		case EvalValues::Nmi: return ReturnBool(s.NmiFlagCounter > 0 || s.NeedNmi, resultType);
 		case EvalValues::Irq: return ReturnBool(s.IrqSource, resultType);
 		case EvalValues::PpuFrameCount: return getPpuState().FrameCount;
 		case EvalValues::PpuCycle: return getPpuState().Cycle;

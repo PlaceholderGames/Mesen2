@@ -9,6 +9,7 @@ using Avalonia.Markup.Xaml;
 using Avalonia.Media;
 using Avalonia.Metadata;
 using Avalonia.Threading;
+using Mesen.Utilities;
 using System;
 using System.Collections.Generic;
 
@@ -177,6 +178,7 @@ namespace Mesen.Debugger.Controls
 		public ScrollPictureViewer()
 		{
 			InitializeComponent();
+			Focusable = true;
 			Background = new SolidColorBrush(0xFF202020);
 		}
 
@@ -190,6 +192,12 @@ namespace Mesen.Debugger.Controls
 		private void Viewer_PointerPressed(object? sender, PointerPressedEventArgs e)
 		{
 			_lastPosition = e.GetCurrentPoint(this).Position;
+		}
+
+		protected override void OnKeyDown(KeyEventArgs e)
+		{
+			base.OnKeyDown(e);
+			InnerViewer.ProcessKeyDown(e);
 		}
 
 		private void UpdateScrollBarVisibility()
@@ -211,9 +219,10 @@ namespace Mesen.Debugger.Controls
 		{
 			base.OnPointerWheelChanged(e);
 			if(e.KeyModifiers == KeyModifiers.Control) {
-				if(e.Delta.Y > 0) {
+				double delta = e.GetDeltaY();
+				if(delta > 0) {
 					InnerViewer.ZoomIn();
-				} else {
+				} else if(delta < 0) {
 					InnerViewer.ZoomOut();
 				}
 				e.Handled = true;

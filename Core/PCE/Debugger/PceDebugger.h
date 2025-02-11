@@ -52,13 +52,14 @@ class PceDebugger final : public IDebugger
 
 	uint8_t _prevOpCode = 0x01;
 	uint32_t _prevProgramCounter = 0;
+	uint8_t _prevStackPointer = 0;
 
 	unique_ptr<DummyPceCpu> _dummyCpu;
 
 	string _cdlFile;
 
 	bool IsRegister(MemoryOperationInfo& op);
-	__forceinline void ProcessCallStackUpdates(AddressInfo& destAddr, uint16_t destPc);
+	__forceinline void ProcessCallStackUpdates(AddressInfo& destAddr, uint16_t destPc, uint8_t sp);
 
 public:
 	PceDebugger(Debugger* debugger);
@@ -66,7 +67,7 @@ public:
 
 	void Reset() override;
 
-	uint64_t GetCpuCycleCount() override;
+	uint64_t GetCpuCycleCount(bool forProfiler) override;
 	void ResetPrevOpCode() override;
 
 	void ProcessInstruction();
@@ -79,6 +80,7 @@ public:
 
 	void Run() override;
 	void Step(int32_t stepCount, StepType type) override;
+	StepBackConfig GetStepBackConfig() override;
 
 	void DrawPartialFrame() override;
 

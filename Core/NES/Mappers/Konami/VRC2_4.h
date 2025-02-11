@@ -81,6 +81,7 @@ class VRC2_4 : public BaseMapper
 		uint16_t GetPrgPageSize() override { return 0x2000; }
 		uint16_t GetChrPageSize() override { return 0x0400; }
 		bool AllowRegisterRead() override { return true; }
+		bool EnableCpuClockHook() override { return true; }
 
 		void InitMapper() override 
 		{
@@ -109,6 +110,8 @@ class VRC2_4 : public BaseMapper
 		
 		void ProcessCpuClock() override
 		{
+			BaseProcessCpuClock();
+
 			if((_useHeuristics && _romInfo.MapperID != 22) || _variant >= VRCVariant::VRC4a) {
 				//Only VRC4 supports IRQs
 				_irq->ProcessCpuClock();

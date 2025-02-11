@@ -2,6 +2,7 @@
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Media;
+using Avalonia.Media.Immutable;
 using Avalonia.Threading;
 using Mesen.Config;
 using Mesen.Interop;
@@ -9,6 +10,7 @@ using Mesen.Utilities;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using System.Reactive.Disposables;
 
 namespace Mesen.Debugger.Controls
@@ -26,6 +28,8 @@ namespace Mesen.Debugger.Controls
 		public static readonly StyledProperty<AddressDisplayType> AddressDisplayTypeProperty = AvaloniaProperty.Register<DisassemblyViewer, AddressDisplayType>(nameof(AddressDisplayType), AddressDisplayType.CpuAddress);
 		
 		public static readonly StyledProperty<int> VisibleRowCountProperty = AvaloniaProperty.Register<DisassemblyViewer, int>(nameof(VisibleRowCount), 0);
+		public static readonly StyledProperty<double> HorizontalScrollPositionProperty = AvaloniaProperty.Register<DisassemblyViewer, double>(nameof(HorizontalScrollPosition), 0, defaultBindingMode: Avalonia.Data.BindingMode.TwoWay);
+		public static readonly StyledProperty<double> HorizontalScrollMaxPositionProperty = AvaloniaProperty.Register<DisassemblyViewer, double>(nameof(HorizontalScrollMaxPosition), 0, defaultBindingMode: Avalonia.Data.BindingMode.TwoWay);
 
 		private static readonly PolylineGeometry ArrowShape = new PolylineGeometry(new List<Point> {
 			new Point(0, 5), new Point(8, 5), new Point(8, 0), new Point(15, 7), new Point(15, 8), new Point(8, 15), new Point(8, 10), new Point(0, 10),
@@ -47,6 +51,18 @@ namespace Mesen.Debugger.Controls
 		{
 			get { return GetValue(VisibleRowCountProperty); }
 			set { SetValue(VisibleRowCountProperty, value); }
+		}
+
+		public double HorizontalScrollPosition
+		{
+			get { return GetValue(HorizontalScrollPositionProperty); }
+			set { SetValue(HorizontalScrollPositionProperty, value); }
+		}
+
+		public double HorizontalScrollMaxPosition
+		{
+			get { return GetValue(HorizontalScrollMaxPositionProperty); }
+			set { SetValue(HorizontalScrollMaxPositionProperty, value); }
 		}
 
 		public ILineStyleProvider StyleProvider
@@ -89,19 +105,25 @@ namespace Mesen.Debugger.Controls
 		private Size LetterSize { get; set; }
 		private double RowHeight => this.LetterSize.Height;
 		private List<CodeSegmentInfo> _visibleCodeSegments = new();
+		private Dictionary<CodeLineData, List<TextFragment>> _textFragments = new();
 		private Point _previousPointerPos;
 		private CodeSegmentInfo? _prevPointerOverSegment = null;
 		private CompositeDisposable _disposables = new();
 
 		static DisassemblyViewer()
 		{
-			AffectsRender<DisassemblyViewer>(FontFamilyProperty, FontSizeProperty, StyleProviderProperty, ShowByteCodeProperty, LinesProperty, SearchStringProperty, AddressDisplayTypeProperty);
+			AffectsRender<DisassemblyViewer>(
+				FontFamilyProperty, FontSizeProperty, StyleProviderProperty, ShowByteCodeProperty,
+				LinesProperty, SearchStringProperty, AddressDisplayTypeProperty, HorizontalScrollPositionProperty
+			);
 		}
 
 		public DisassemblyViewer()
 		{
 			Focusable = true;
 			ClipToBounds = true;
+
+			ColorHelper.InvalidateControlOnThemeChange(this);
 		}
 
 		protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
@@ -155,7 +177,15 @@ namespace Mesen.Debugger.Controls
 				if(codeSegment.Bounds.Contains(p)) {
 					//Don't trigger an event if this is the same segment
 					if(_prevPointerOverSegment != codeSegment) {
-						CodePointerMoved?.Invoke(this, new CodePointerMovedEventArgs(rowNumber, e, lineData, codeSegment));
+						List<TextFragment>? fragments = null;
+						TextFragment? fragment = null;
+						if(lineData != null) {
+							_textFragments.TryGetValue(lineData, out fragments);
+							if(fragments != null) {
+								fragment = fragments.Where(frag => p.X >= frag.XPosition && p.X < frag.XPosition + frag.Width).FirstOrDefault();
+							}
+						}
+						CodePointerMoved?.Invoke(this, new CodePointerMovedEventArgs(rowNumber, e, lineData, codeSegment, fragments, fragment));
 						_prevPointerOverSegment = codeSegment;
 					}
 					return;
@@ -241,17 +271,22 @@ namespace Mesen.Debugger.Controls
 			}
 
 			_visibleCodeSegments.Clear();
+			_textFragments.Clear();
 
 			bool useLowerCase = ConfigManager.Config.Debug.Debugger.UseLowerCaseDisassembly;
 			string baseFormat = useLowerCase ? "x" : "X";
 
 			//Draw code
 			int lineCount = Math.Min(VisibleRowCount, lines.Length);
+			double maxWidth = 0;
+
 			for(int i = 0; i < lineCount; i++) {
 				CodeLineData line = lines[i];
+				_textFragments[line] = new();
+
 				string addrFormat = baseFormat + line.CpuType.GetAddressSize();
 				LineProperties lineStyle = styleProvider.GetLineStyle(line, i);
-				List<CodeColor> lineParts = styleProvider.GetCodeColors(line, true, addrFormat, lineStyle.FgColor != null ? lineStyle.FgColor.Value : null, true);
+				List<CodeColor> lineParts = styleProvider.GetCodeColors(line, true, addrFormat, lineStyle.TextBgColor != null ? ColorHelper.GetContrastTextColor(lineStyle.TextBgColor.Value) : null, true);
 
 				double x = 0;
 
@@ -306,40 +341,47 @@ namespace Mesen.Debugger.Controls
 						context.DrawText(smallText, new Point(textPosX, textPosY));
 					}
 				} else {
-					if(lineStyle.TextBgColor.HasValue || lineStyle.OutlineColor.HasValue) {
-						text = FormatText(GetHighlightedText(line, lineParts, out double leftMargin));
+					using(var clip = context.PushClip(new Rect(x, 0, Bounds.Width, Bounds.Height))) {
+						using(var translation = context.PushTransform(Matrix.CreateTranslation(-HorizontalScrollPosition*10, 0))) {
+							if(lineStyle.TextBgColor.HasValue || lineStyle.OutlineColor.HasValue) {
+								text = FormatText(GetHighlightedText(line, lineParts, out double leftMargin));
 
-						Brush? b = lineStyle.TextBgColor.HasValue ? new SolidColorBrush(lineStyle.TextBgColor.Value.ToUInt32()) : null;
-						Pen? p = lineStyle.OutlineColor.HasValue ? new Pen(lineStyle.OutlineColor.Value.ToUInt32()) : null;
-						if(b != null) {
-							context.DrawRectangle(b, null, new Rect(Math.Round(x + codeIndent + leftMargin) - 0.5, Math.Round(y) - 0.5, Math.Round(text.WidthIncludingTrailingWhitespace) + 1, Math.Round(LetterSize.Height)));
+								Brush? b = lineStyle.TextBgColor.HasValue ? new SolidColorBrush(lineStyle.TextBgColor.Value.ToUInt32()) : null;
+								Pen? p = lineStyle.OutlineColor.HasValue ? new Pen(lineStyle.OutlineColor.Value.ToUInt32()) : null;
+								if(b != null) {
+									context.DrawRectangle(b, null, new Rect(Math.Round(x + codeIndent + leftMargin) - 0.5, Math.Round(y) - 0.5, Math.Round(text.WidthIncludingTrailingWhitespace) + 1, Math.Round(LetterSize.Height)));
+								}
+								if(p != null) {
+									context.DrawRectangle(p, new Rect(Math.Round(x + codeIndent + leftMargin) - 0.5, Math.Round(y) - 0.5, Math.Round(text.WidthIncludingTrailingWhitespace) + 1, Math.Round(LetterSize.Height)));
+								}
+							}
+
+							double indent = codeIndent;
+							if(lineParts.Count == 1 && (lineParts[0].Type == CodeSegmentType.LabelDefinition || lineParts[0].Type == CodeSegmentType.Comment)) {
+								//Don't indent multi-line comments/label definitions
+								indent = 0.5;
+							}
+
+							double xStart = x + indent;
+							foreach(CodeColor part in lineParts) {
+								Point pos = new Point(x + indent, y);
+								SolidColorBrush brush = part.Type switch {
+									CodeSegmentType.Comment or CodeSegmentType.EffectiveAddress or CodeSegmentType.MemoryValue => ColorHelper.GetBrush(part.Color),
+									_ => lineStyle.TextBgColor.HasValue ? new SolidColorBrush(part.Color) : ColorHelper.GetBrush(part.Color)
+								};
+								text = FormatText(part.Text, brush);
+								context.DrawText(text, pos);
+								_visibleCodeSegments.Add(new CodeSegmentInfo(part.Text, part.Type, new Rect(pos, new Size(text.WidthIncludingTrailingWhitespace, text.Height)), line, part.OriginalIndex));
+								GenerateTextFragments(line, part, x, indent);
+								x += text.WidthIncludingTrailingWhitespace;
+							}
+
+							maxWidth = Math.Max(maxWidth, x + indent);
+
+							if(!string.IsNullOrWhiteSpace(searchString)) {
+								DrawSearchHighlight(context, y, searchString, line, lineParts, xStart);
+							}
 						}
-						if(p != null) {
-							context.DrawRectangle(p, new Rect(Math.Round(x + codeIndent + leftMargin) - 0.5, Math.Round(y) - 0.5, Math.Round(text.WidthIncludingTrailingWhitespace) + 1, Math.Round(LetterSize.Height)));
-						}
-					}
-
-					double indent = codeIndent;
-					if(lineParts.Count == 1 && (lineParts[0].Type == CodeSegmentType.LabelDefinition || lineParts[0].Type == CodeSegmentType.Comment)) {
-						//Don't indent multi-line comments/label definitions
-						indent = 0.5;
-					}
-
-					double xStart = x + indent;
-					foreach(CodeColor part in lineParts) {
-						Point pos = new Point(x + indent, y);
-						SolidColorBrush brush = part.Type switch {
-							CodeSegmentType.Comment or CodeSegmentType.EffectiveAddress or CodeSegmentType.MemoryValue => ColorHelper.GetBrush(part.Color),
-							_ => lineStyle.TextBgColor.HasValue ? new SolidColorBrush(part.Color) : ColorHelper.GetBrush(part.Color)
-						};
-						text = FormatText(part.Text, brush);
-						context.DrawText(text, pos);
-						_visibleCodeSegments.Add(new CodeSegmentInfo(part.Text, part.Type, new Rect(pos, new Size(text.WidthIncludingTrailingWhitespace, text.Height)), line, part.OriginalIndex));
-						x += text.WidthIncludingTrailingWhitespace;
-					}
-
-					if(!string.IsNullOrWhiteSpace(searchString)) {
-						DrawSearchHighlight(context, y, searchString, line, lineParts, xStart);
 					}
 
 					if(lineStyle.Progress != null) {
@@ -360,6 +402,39 @@ namespace Mesen.Debugger.Controls
 				}
 				y += LetterSize.Height;
 			}
+
+			Dispatcher.UIThread.Post(() => {
+				HorizontalScrollMaxPosition = Math.Max(1, (maxWidth - Bounds.Width + 10) / 10);
+			});
+		}
+
+		private void GenerateTextFragments(CodeLineData line, CodeColor part, double x, double indent)
+		{
+			//Calculate x-axis start/end offsets for all text fragments (each invididual word, etc.)
+			for(int j = 0; j < part.Text.Length; j++) {
+				int start = j;
+
+				char c = part.Text[j];
+				int startCharType = (char.IsLetterOrDigit(c) || c == '_' || c == '@' || c == '.') ? 1 : (char.IsWhiteSpace(c) ? 2 : 3);
+				int charType;
+				do {
+					j++;
+					if(j >= part.Text.Length) {
+						break;
+					}
+
+					c = part.Text[j];
+					charType = (char.IsLetterOrDigit(c) || c == '_' || c == '@' || c == '.') ? 1 : (char.IsWhiteSpace(c) ? 2 : 3);
+				} while(charType == startCharType);
+				j--;
+
+				int len = j - start + 1;
+				string fragment = part.Text.Substring(start, len);
+				FormattedText text = FormatText(fragment);
+				double width = text.WidthIncludingTrailingWhitespace;
+				_textFragments[line].Add(new TextFragment { Text = fragment, StartIndex = start, TextLength = len, XPosition = x + indent, Width = width });
+				x += width;
+			}
 		}
 
 		private string GetHighlightedText(CodeLineData line, List<CodeColor> lineParts, out double leftMargin)
@@ -371,19 +446,24 @@ namespace Mesen.Debugger.Controls
 
 			int skipCharCount = 0;
 			int highlightCharCount = 0;
-			bool foundOpCode = false;
+			bool foundCodeStart = false;
+			CodeSegmentType prevType = CodeSegmentType.None;
 			foreach(CodeColor part in lineParts) {
-				if(!foundOpCode && part.Type != CodeSegmentType.OpCode) {
+				CodeSegmentType type = part.Type;
+				//Find the first part that's not a whitespace or label definition (or the : after the label def)
+				if(!foundCodeStart && (type == CodeSegmentType.None || type == CodeSegmentType.LabelDefinition || (type == CodeSegmentType.Syntax && prevType == CodeSegmentType.LabelDefinition))) {
 					FormattedText text = FormatText(part.Text);
 					leftMargin += text.WidthIncludingTrailingWhitespace;
 					skipCharCount += part.Text.Length;
 				} else {
-					foundOpCode = true;
-					if(part.OriginalIndex < 0 || part.Type == CodeSegmentType.Comment) {
+					foundCodeStart = true;
+					if(part.OriginalIndex < 0 || type == CodeSegmentType.Comment) {
 						break;
 					}
 					highlightCharCount += part.Text.Length;
 				}
+
+				prevType = type;
 			}
 
 			if(skipCharCount + highlightCharCount > line.Text.Length) {
@@ -429,18 +509,30 @@ namespace Mesen.Debugger.Controls
 
 		private void DrawLineSymbol(DrawingContext context, double y, LineProperties lineStyle)
 		{
-			if(lineStyle.Symbol.HasFlag(LineSymbol.Circle) || lineStyle.Symbol.HasFlag(LineSymbol.CircleOutline)) {
-				if(lineStyle.OutlineColor.HasValue) {
+			bool showOutline = lineStyle.Symbol.HasFlag(LineSymbol.CircleOutline) || lineStyle.Symbol.HasFlag(LineSymbol.Forbid) || lineStyle.Symbol.HasFlag(LineSymbol.ForbidDotted);
+			if(showOutline || lineStyle.Symbol.HasFlag(LineSymbol.Circle)) {
+				if(lineStyle.SymbolColor.HasValue) {
 					using var translation = context.PushTransform(Matrix.CreateTranslation(2.5, y + (LetterSize.Height * 0.15 / 2)));
 					using var scale = context.PushTransform(Matrix.CreateScale(0.85, 0.85));
+
+					IDashStyle? dashStyle = lineStyle.Symbol.HasFlag(LineSymbol.ForbidDotted) ? new ImmutableDashStyle(new double[] { 1, 1 }, 0.5) : null;
 					EllipseGeometry geometry = new EllipseGeometry(new Rect(0, 0, LetterSize.Height, LetterSize.Height));
-					IBrush? b = lineStyle.Symbol.HasFlag(LineSymbol.Circle) ? new SolidColorBrush(lineStyle.OutlineColor.Value) : null;
-					IPen? p = lineStyle.Symbol.HasFlag(LineSymbol.CircleOutline) ? new Pen(lineStyle.OutlineColor.Value.ToUInt32()) : null;
+					IBrush? b = lineStyle.Symbol.HasFlag(LineSymbol.Circle) ? new SolidColorBrush(lineStyle.SymbolColor.Value.ToUInt32()) : null;
+					IPen? p = showOutline ? new Pen(lineStyle.SymbolColor.Value.ToUInt32(), 1, dashStyle) : null;
 					context.DrawGeometry(b, p, geometry);
 
+					if(lineStyle.Symbol.HasFlag(LineSymbol.Forbid) || lineStyle.Symbol.HasFlag(LineSymbol.ForbidDotted)) {
+						p = new Pen(lineStyle.SymbolColor.Value.ToUInt32(), 1, dashStyle);
+						double xPos = LetterSize.Height / 2 - (Math.Cos(Math.PI / 4) * LetterSize.Height/2);
+						double yPos = LetterSize.Height / 2 - (Math.Sin(Math.PI / 4) * LetterSize.Height/2);
+						double xPos2 = LetterSize.Height / 2 + (Math.Cos(Math.PI / 4) * LetterSize.Height/2);
+						double yPos2 = LetterSize.Height / 2 + (Math.Sin(Math.PI / 4) * LetterSize.Height/2);
+						context.DrawLine(p, new Point(xPos, yPos), new Point(xPos2, yPos2));
+					}
+
 					if(lineStyle.Symbol.HasFlag(LineSymbol.Plus)) {
-						Color c = lineStyle.Symbol.HasFlag(LineSymbol.CircleOutline) ? lineStyle.OutlineColor.Value : Colors.White;
-						p = new Pen(c.ToUInt32(), 2);
+						Color c = showOutline ? lineStyle.SymbolColor.Value : Colors.White;
+						p = new Pen(c.ToUInt32(), 2, dashStyle);
 						context.DrawLine(p, new Point(2, LetterSize.Height / 2), new Point(LetterSize.Height - 2, LetterSize.Height / 2));
 						context.DrawLine(p, new Point(LetterSize.Height / 2, 2), new Point(LetterSize.Height / 2, LetterSize.Height - 2));
 					}
@@ -463,19 +555,32 @@ namespace Mesen.Debugger.Controls
 		}
 	}
 
+	public class TextFragment
+	{
+		public string Text { get; set; } = "";
+		public int StartIndex { get; set; }
+		public int TextLength { get; set; }
+		public double XPosition { get; set; }
+		public double Width { get; set; }
+	}
+
 	public class CodePointerMovedEventArgs : EventArgs
 	{
-		public CodePointerMovedEventArgs(int rowNumber, PointerEventArgs pointerEvent, CodeLineData? lineData, CodeSegmentInfo? codeSegment)
+		public CodePointerMovedEventArgs(int rowNumber, PointerEventArgs pointerEvent, CodeLineData? lineData, CodeSegmentInfo? codeSegment, List<TextFragment>? fragments = null, TextFragment? fragment = null)
 		{
-			this.RowNumber = rowNumber;
-			this.Data = lineData;
-			this.CodeSegment = codeSegment;
-			this.PointerEvent = pointerEvent;
+			RowNumber = rowNumber;
+			Data = lineData;
+			CodeSegment = codeSegment;
+			Fragments = fragments;
+			Fragment = fragment;
+			PointerEvent = pointerEvent;
 		}
 
 		public PointerEventArgs PointerEvent { get; }
 		public CodeLineData? Data { get; }
 		public CodeSegmentInfo? CodeSegment { get; }
+		public List<TextFragment>? Fragments { get; }
+		public TextFragment? Fragment { get; }
 		public int RowNumber { get; }
 	}
 
@@ -542,8 +647,8 @@ namespace Mesen.Debugger.Controls
 	{
 		public Color? LineBgColor;
 		public Color? TextBgColor;
-		public Color? FgColor;
 		public Color? OutlineColor;
+		public Color? SymbolColor;
 		public Color? AddressColor;
 		public LineSymbol Symbol;
 
@@ -570,12 +675,15 @@ namespace Mesen.Debugger.Controls
 		CircleOutline = 2,
 		Arrow = 4,
 		Mark = 8,
-		Plus = 16
+		Plus = 16,
+		Forbid = 32,
+		ForbidDotted = 64,
 	}
 
 	public enum CodeSegmentType
 	{
 		OpCode,
+		Token,
 		ImmediateValue,
 		Address,
 		Label,

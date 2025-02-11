@@ -11,12 +11,10 @@ using Mesen.Interop;
 using Avalonia.Threading;
 using Avalonia;
 using Mesen.Config;
-using Mesen.Utilities.GlobalMouseLib;
 using Mesen.Utilities;
 using Mesen.Localization;
-using Avalonia.Remote.Protocol.Input;
-using DynamicData;
 using Avalonia.Layout;
+using System.Diagnostics;
 
 namespace Mesen.Windows
 {
@@ -27,6 +25,9 @@ namespace Mesen.Windows
 		private List<UInt16> _prevScanCodes = new List<UInt16>();
 		private TextBlock lblCurrentKey;
 		private bool _allowKeyboardOnly;
+
+		private Stopwatch _stopWatch = Stopwatch.StartNew();
+		private Dictionary<Key, long> _keyPressedStamp = new();
 
 		public string HintLabel { get; }
 		public bool SingleKeyMode { get; set; } = false;
@@ -72,16 +73,31 @@ namespace Mesen.Windows
 		{
 			InputApi.SetKeyState((UInt16)e.Key, true);
 			DbgShortcutKey = new DbgShortKeys(e.KeyModifiers, e.Key);
+			_keyPressedStamp[e.Key] = _stopWatch.ElapsedTicks;
 			e.Handled = true;
 		}
 
 		private void OnPreviewKeyUp(object? sender, KeyEventArgs e)
 		{
+			e.Handled = true;
+
+			if(e.Key.IsSpecialKey() && !_allowKeyboardOnly && (!_keyPressedStamp.TryGetValue(e.Key, out long stamp) || ((_stopWatch.ElapsedTicks - stamp) * 1000 / Stopwatch.Frequency) < 10)) {
+				//Key up received without key down, or key pressed for less than 10 ms, pretend the key was pressed for 50ms
+				//Some special keys can behave this way (e.g printscreen)
+				DbgShortcutKey = new DbgShortKeys(e.KeyModifiers, e.Key);
+				InputApi.SetKeyState((UInt16)e.Key, true);
+				UpdateKeyDisplay();
+				DispatcherTimer.RunOnce(() => InputApi.SetKeyState((UInt16)e.Key, false), TimeSpan.FromMilliseconds(50), DispatcherPriority.MaxValue);
+				_keyPressedStamp.Remove(e.Key);
+				return;
+			}
+
+			_keyPressedStamp.Remove(e.Key);
+
 			InputApi.SetKeyState((UInt16)e.Key, false);
 			if(_allowKeyboardOnly) {
 				this.Close();
 			}
-			e.Handled = true;
 		}
 
 		protected override void OnOpened(EventArgs e)
@@ -116,15 +132,15 @@ namespace Mesen.Windows
 		private void UpdateKeyDisplay()
 		{
 			if(!_allowKeyboardOnly) {
-				MousePosition p = GlobalMouse.GetMousePosition(IntPtr.Zero);
-				PixelPoint mousePos = new PixelPoint(p.X, p.Y);
-				PixelRect clientBounds = new PixelRect(this.PointToScreen(new Point(0, 0)), PixelSize.FromSize(Bounds.Size, LayoutHelper.GetLayoutScale(this)));
+				SystemMouseState mouseState = InputApi.GetSystemMouseState(IntPtr.Zero);
+				PixelPoint mousePos = new PixelPoint(mouseState.XPosition, mouseState.YPosition);
+				PixelRect clientBounds = new PixelRect(this.PointToScreen(new Point(0, 0)), PixelSize.FromSize(Bounds.Size, LayoutHelper.GetLayoutScale(this) / InputApi.GetPixelScale()));
 				bool mouseInsideWindow = clientBounds.Contains(mousePos);
-				InputApi.SetKeyState(MouseManager.LeftMouseButtonKeyCode, mouseInsideWindow && GlobalMouse.IsMouseButtonPressed(MouseButtons.Left));
-				InputApi.SetKeyState(MouseManager.RightMouseButtonKeyCode, mouseInsideWindow && GlobalMouse.IsMouseButtonPressed(MouseButtons.Right));
-				InputApi.SetKeyState(MouseManager.MiddleMouseButtonKeyCode, mouseInsideWindow && GlobalMouse.IsMouseButtonPressed(MouseButtons.Middle));
-				InputApi.SetKeyState(MouseManager.MouseButton4KeyCode, mouseInsideWindow && GlobalMouse.IsMouseButtonPressed(MouseButtons.Button4));
-				InputApi.SetKeyState(MouseManager.MouseButton5KeyCode, mouseInsideWindow && GlobalMouse.IsMouseButtonPressed(MouseButtons.Button5));
+				InputApi.SetKeyState(MouseManager.LeftMouseButtonKeyCode, mouseInsideWindow && mouseState.LeftButton);
+				InputApi.SetKeyState(MouseManager.RightMouseButtonKeyCode, mouseInsideWindow && mouseState.RightButton);
+				InputApi.SetKeyState(MouseManager.MiddleMouseButtonKeyCode, mouseInsideWindow && mouseState.MiddleButton);
+				InputApi.SetKeyState(MouseManager.MouseButton4KeyCode, mouseInsideWindow && mouseState.Button4);
+				InputApi.SetKeyState(MouseManager.MouseButton5KeyCode, mouseInsideWindow && mouseState.Button5);
 
 				List<UInt16> scanCodes = InputApi.GetPressedKeys();
 

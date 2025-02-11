@@ -29,6 +29,7 @@ class NecDspDebugger final : public IDebugger
 	unique_ptr<CallstackManager> _callstackManager;
 
 	uint32_t _prevProgramCounter = 0;
+	uint8_t _prevStackPointer = 0;
 	uint32_t _prevOpCode = 0;
 
 public:
@@ -46,7 +47,7 @@ public:
 	DebuggerFeatures GetSupportedFeatures() override;
 	void SetProgramCounter(uint32_t addr, bool updateDebuggerOnly = false) override;
 	uint32_t GetProgramCounter(bool getInstPc) override;
-	uint64_t GetCpuCycleCount() override;
+	uint64_t GetCpuCycleCount(bool forProfiler) override;
 	CallstackManager* GetCallstackManager() override;
 	BreakpointManager* GetBreakpointManager() override;
 	IAssembler* GetAssembler() override;

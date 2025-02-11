@@ -34,7 +34,7 @@ private:
 	bool _enableDecoder = false;
 
 	bool _audioEnabled = false;
-	bool _motorDisabled = false;
+	bool _motorDisabled = true;
 	uint16_t _byteReadDelay = 0;
 	bool _irqEnabled = false;
 
@@ -50,12 +50,14 @@ protected:
 	uint16_t RegisterStartAddress() override { return 0x4200; }
 	uint16_t RegisterEndAddress() override { return 0x4203; }
 	bool AllowRegisterRead() override { return true; }
+	bool EnableCpuClockHook() override { return true; }
 
 	uint16_t GetPrgPageSize() override { return 0x4000; }
 	uint16_t GetChrPageSize() override { return 0x2000; }
 
 	uint32_t GetWorkRamSize() override { return 0x10000; }
 	uint32_t GetWorkRamPageSize() override { return 0x1000; }
+	uint32_t GetNametableCount() override { return 4; }
 
 	void InitMapper() override
 	{
@@ -78,6 +80,31 @@ protected:
 		SetMirroringType(MirroringType::FourScreens);
 
 		_emu->GetSoundMixer()->RegisterAudioProvider(this);
+	}
+
+	void Reset(bool softReset) override
+	{
+		if(softReset) {
+			_wavReader = WavReader::Create(_tapeData.AudioFile.data(), (uint32_t)_tapeData.AudioFile.size());
+			_readyForBit = false;
+			_processBitDelay = 0;
+			_reg4202 = 0;
+			_commandCounter = 0;
+			_command = 0;
+			_currentPage = 0;
+			_seekPage = 0;
+			_seekPageDelay = 0;
+			_enableDecoder = false;
+			_audioEnabled = false;
+			_motorDisabled = true;
+			_byteReadDelay = 0;
+			_irqEnabled = false;
+			_pageFound = false;
+			_pageIndex = 0;
+			_pagePosition = -1;
+			_inDataDelay = 0;
+			_inDataRegion = false;
+		}
 	}
 
 	~StudyBox() override
@@ -121,6 +148,8 @@ protected:
 
 	void ProcessCpuClock() override
 	{
+		BaseProcessCpuClock();
+
 		if(_processBitDelay > 0) {
 			_processBitDelay--;
 			if(_processBitDelay == 0) {

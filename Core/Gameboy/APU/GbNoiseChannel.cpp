@@ -1,6 +1,7 @@
 #include "pch.h"
 #include "Gameboy/APU/GbNoiseChannel.h"
 #include "Gameboy/APU/GbApu.h"
+#include "Gameboy/APU/GbEnvelope.h"
 
 GbNoiseChannel::GbNoiseChannel(GbApu* apu)
 {
@@ -37,60 +38,33 @@ void GbNoiseChannel::ClockLengthCounter()
 		if(_state.Length == 0) {
 			//"Length becoming 0 should clear status"
 			_state.Enabled = false;
-			UpdateOutput();
+			_state.Output = 0;
 		}
 	}
 }
 
 void GbNoiseChannel::UpdateOutput()
 {
-	if(_state.Enabled) {
-		_state.Output = ((_state.ShiftRegister & 0x01) ^ 0x01) * _state.Volume;
-	} else {
-		_state.Output = 0;
-	}
+	_state.Output = ((_state.ShiftRegister & 0x01) ^ 0x01) * _state.Volume;
 }
 
 void GbNoiseChannel::ClockEnvelope()
 {
-	if(_state.EnvTimer > 0 && _state.EnvPeriod > 0 && !_state.EnvStopped) {
-		_state.EnvTimer--;
-
-		if(_state.EnvTimer == 0) {
-			if(_state.EnvRaiseVolume && _state.Volume < 0x0F) {
-				_state.Volume++;
-			} else if(!_state.EnvRaiseVolume && _state.Volume > 0) {
-				_state.Volume--;
-			} else {
-				_state.EnvStopped = true;
-			}
-
-			//Based on the channel_4_volume_div test, clocking the envelope updates the output immediately
-			UpdateOutput();
-
-			_state.EnvTimer = _state.EnvPeriod;
-		}
-	}
+	GbEnvelope::ClockEnvelope(_state, *this);
 }
 
 uint8_t GbNoiseChannel::GetRawOutput()
 {
-	return _state.Output;
+	return (!_state.EnvRaiseVolume && _state.EnvVolume == 0) ? 0 : _state.Output;
 }
 
-int8_t GbNoiseChannel::GetOutput()
+double GbNoiseChannel::GetOutput()
 {
-	//"Channel x’s DAC is enabled if and only if [NRx2] & $F8 != 0"
-	if(!_state.EnvRaiseVolume && _state.EnvVolume == 0) {
-		//"If a DAC is disabled, it fades to an analog value of 0"
-		return 0;
-	}
-
 	//"If a DAC is enabled, the digital range $0 to $F is linearly translated to the analog range -1 to 1, 
 	//in arbitrary units. Importantly, the slope is negative: “digital 0” maps to “analog 1”, not “analog -1”."	
 
 	//Return -7 to 7 "analog" range (higher digital value = lower analog value)
-	return 7 - (int8_t)_state.Output;
+	return (7 - (int8_t)_state.Output) * (double)_dac.GetDacVolume() / 100;
 }
 
 uint32_t GbNoiseChannel::GetPeriod()
@@ -104,6 +78,8 @@ uint32_t GbNoiseChannel::GetPeriod()
 
 void GbNoiseChannel::Exec(uint32_t clocksToRun)
 {
+	_dac.Exec(clocksToRun, _state.EnvVolume || _state.EnvRaiseVolume);
+
 	if(!_state.Enabled) {
 		return;
 	}
@@ -171,30 +147,7 @@ void GbNoiseChannel::Write(uint16_t addr, uint8_t value)
 			break;
 
 		case 2: {
-			if(_state.EnvPeriod == 0 && !_state.EnvStopped) {
-				//"If the old envelope period was zero and the envelope is still doing automatic updates, volume is incremented by 1"
-				_state.Volume++;
-			} else if(!_state.EnvRaiseVolume) {
-				//"otherwise if the envelope was in subtract mode, volume is incremented by 2"
-				_state.Volume += 2;
-			}
-
-			bool raiseVolume = (value & 0x08) != 0;
-			if(raiseVolume != _state.EnvRaiseVolume) {
-				//"If the mode was changed (add to subtract or subtract to add), volume is set to 16 - volume."
-				_state.Volume = 16 - _state.Volume;
-			}
-
-			//"Only the low 4 bits of volume are kept after the above operations."
-			_state.Volume &= 0xF;
-
-			_state.EnvPeriod = value & 0x07;
-			_state.EnvRaiseVolume = (value & 0x08) != 0;
-			_state.EnvVolume = (value & 0xF0) >> 4;
-
-			if(!(value & 0xF8)) {
-				_state.Enabled = false;
-			}
+			GbEnvelope::WriteRegister(_state, value, *this);
 			break;
 		}
 
@@ -267,4 +220,5 @@ void GbNoiseChannel::Serialize(Serializer& s)
 	SV(_state.Volume); SV(_state.EnvVolume); SV(_state.EnvRaiseVolume); SV(_state.EnvPeriod); SV(_state.EnvTimer); SV(_state.EnvStopped);
 	SV(_state.ShiftRegister); SV(_state.PeriodShift); SV(_state.Divisor); SV(_state.ShortWidthMode);
 	SV(_state.Length); SV(_state.LengthEnabled); SV(_state.Enabled); SV(_state.Timer); SV(_state.Output);
+	SV(_dac);
 }

@@ -49,6 +49,11 @@ namespace Mesen.Controls
 			NavigateTo(ConfigWindowTab.Gameboy);
 		}
 
+		private void OnClickGba(object sender, RoutedEventArgs e)
+		{
+			NavigateTo(ConfigWindowTab.Gba);
+		}
+
 		private void OnClickPcEngine(object sender, RoutedEventArgs e)
 		{
 			NavigateTo(ConfigWindowTab.PcEngine);
@@ -57,6 +62,11 @@ namespace Mesen.Controls
 		private void OnClickSms(object sender, RoutedEventArgs e)
 		{
 			NavigateTo(ConfigWindowTab.Sms);
+		}
+
+		private void OnClickWs(object sender, RoutedEventArgs e)
+		{
+			NavigateTo(ConfigWindowTab.Ws);
 		}
 
 		private void NavigateTo(ConfigWindowTab console)
@@ -98,6 +108,17 @@ namespace Mesen.Controls
 						}
 						break;
 
+					case ConfigWindowTab.Gba:
+						if(cfg.Gba != null) {
+							cfg.Gba.SelectedTab = ConfigType switch {
+								ConfigType.Audio => GbaConfigTab.Audio,
+								ConfigType.Emulation => GbaConfigTab.Emulation,
+								ConfigType.Input => GbaConfigTab.Input,
+								_ or ConfigType.Video => GbaConfigTab.Video,
+							};
+						}
+						break;
+
 					case ConfigWindowTab.PcEngine:
 						if(cfg.PcEngine != null) {
 							cfg.PcEngine.SelectedTab = ConfigType switch {
@@ -116,6 +137,17 @@ namespace Mesen.Controls
 								ConfigType.Emulation => SmsConfigTab.Emulation,
 								ConfigType.Input => SmsConfigTab.Input,
 								_ or ConfigType.Video => SmsConfigTab.Video,
+							};
+						}
+						break;
+
+					case ConfigWindowTab.Ws:
+						if(cfg.Ws != null) {
+							cfg.Ws.SelectedTab = ConfigType switch {
+								ConfigType.Audio => WsConfigTab.Audio,
+								ConfigType.Emulation => WsConfigTab.Emulation,
+								ConfigType.Input => WsConfigTab.Input,
+								_ or ConfigType.Video => WsConfigTab.Video,
 							};
 						}
 						break;

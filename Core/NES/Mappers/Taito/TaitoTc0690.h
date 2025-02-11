@@ -11,6 +11,8 @@ private:
 	bool _isFlintstones = false;
 
 protected:
+	bool EnableCpuClockHook() override { return true; }
+
 	void InitMapper() override
 	{
 		_irqDelay = 0;
@@ -37,6 +39,8 @@ protected:
 
 	void ProcessCpuClock() override
 	{
+		BaseProcessCpuClock();
+
 		if(_irqDelay > 0) {
 			_irqDelay--;
 			if(_irqDelay == 0) {

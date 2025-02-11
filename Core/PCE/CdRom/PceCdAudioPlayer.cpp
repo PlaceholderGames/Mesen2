@@ -1,6 +1,7 @@
 #include "pch.h"
 #include "PCE/CdRom/PceCdAudioPlayer.h"
 #include "PCE/CdRom/PceCdRom.h"
+#include "PCE/CdRom/PceCdSeekDelay.h"
 #include "PCE/PceTypes.h"
 #include "Shared/Emulator.h"
 #include "Shared/EmuSettings.h"
@@ -19,6 +20,9 @@ void PceCdAudioPlayer::Play(uint32_t startSector, bool pause)
 {
 	int32_t track = _disc->GetTrack(startSector);
 	if(track >= 0) {
+		uint32_t startLba = _cdrom->GetCurrentSector();
+		_seekDelay = (uint32_t)((PceCdSeekDelay::GetSeekTimeMs(startLba, startSector) / 1000.0) * _emu->GetMasterClockRate());
+
 		_state.StartSector = startSector;
 		_state.Status = pause ? CdAudioStatus::Paused : CdAudioStatus::Playing;
 
@@ -80,12 +84,17 @@ void PceCdAudioPlayer::PlaySample()
 	}
 }
 
+void PceCdAudioPlayer::ProcessAudioPlaybackStart()
+{
+	_cdrom->ProcessAudioPlaybackStart();
+}
+
 void PceCdAudioPlayer::MixAudio(int16_t* out, uint32_t sampleCount, uint32_t sampleRate)
 {
 	double volume = _cdrom->GetAudioFader().GetVolume(PceAudioFaderTarget::CdAudio);
 	_resampler.SetVolume(_emu->GetSettings()->GetPcEngineConfig().CdAudioVolume / 100.0 * volume);
 	_resampler.SetSampleRates(44100, sampleRate);
-	_resampler.Resample<true>(_samplesToPlay.data(), (uint32_t)_samplesToPlay.size() / 2, out, sampleCount);
+	_resampler.Resample<true>(_samplesToPlay.data(), (uint32_t)_samplesToPlay.size() / 2, out, sampleCount, _state.Status == CdAudioStatus::Playing);
 	_samplesToPlay.clear();
 }
 

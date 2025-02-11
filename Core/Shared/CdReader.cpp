@@ -45,18 +45,37 @@ bool CdReader::LoadCue(VirtualFile& cueFile, DiscInfo& disc)
 		if(line.substr(0, 4) == string("FILE")) {
 			size_t start = line.find_first_of('"');
 			size_t end = line.find_last_of('"');
-			if(start != end && start != string::npos && end != string::npos) {
-				string filename = line.substr(start + 1, end - start - 1);
 
+			string filename;
+			if(start != end && start != string::npos && end != string::npos) {
+				filename = line.substr(start + 1, end - start - 1);
+			} else {
+				//No quotes found, use first and last space as delimiters
+				start = line.find_first_of(' ');
+				end = line.find_last_of(' ');
+				if(end == start && start != string::npos) {
+					//only 1 space found, use end of string instead
+					end = line.size();
+				}
+				if(start != end && start != string::npos && end != string::npos) {
+					filename = line.substr(start + 1, end - start - 1);
+				}
+			}
+			
+			filename = StringUtilities::Trim(filename);
+			if(!filename.empty()) {
 				VirtualFile dataFile = cueFile.GetFolderPath() + filename;
 				if(cueFile.IsArchive()) {
 					dataFile = VirtualFile(cueFile.GetFilePath(), filename);
 				}
 				files.push_back({ dataFile });
+			} else {
+				MessageManager::Log("[CUE] Invalid FILE entry");
+				return false;
 			}
 		} else if(line.substr(0, 5) == string("TRACK")) {
 			if(files.size() == 0) {
-				MessageManager::Log("[CUE] Unexcepted TRACK entry");
+				MessageManager::Log("[CUE] Unexpected TRACK entry");
 				return false;
 			}
 
@@ -79,7 +98,7 @@ bool CdReader::LoadCue(VirtualFile& cueFile, DiscInfo& disc)
 			files[files.size() - 1].Tracks.push_back(trk);
 		} else if(line.substr(0, 6) == string("PREGAP")) {
 			if(files.empty() || files[files.size() - 1].Tracks.empty()) {
-				MessageManager::Log("[CUE] Unexcepted PREGAP entry");
+				MessageManager::Log("[CUE] Unexpected PREGAP entry");
 				return false;
 			}
 			
@@ -106,7 +125,7 @@ bool CdReader::LoadCue(VirtualFile& cueFile, DiscInfo& disc)
 			files[files.size() - 1].Tracks[files[files.size() - 1].Tracks.size() - 1].PreGap = gap;
 		} else if(line.substr(0, 5) == string("INDEX")) {
 			if(files.empty() || files[files.size() - 1].Tracks.empty()) {
-				MessageManager::Log("[CUE] Unexcepted INDEX entry");
+				MessageManager::Log("[CUE] Unexpected INDEX entry");
 				return false;
 			}
 
@@ -138,7 +157,6 @@ bool CdReader::LoadCue(VirtualFile& cueFile, DiscInfo& disc)
 		}
 	}
 
-	int sectorsInPrevFiles = 0;
 	uint32_t totalPregapLbaLength = 0;
 	for(size_t i = 0; i < files.size(); i++) {
 		VirtualFile physicalFile = files[i].Filename;
@@ -148,7 +166,7 @@ bool CdReader::LoadCue(VirtualFile& cueFile, DiscInfo& disc)
 		}
 
 		disc.Files.push_back(files[i].Filename);
-		int sectorsInFile = 0;
+		int startSector = i == 0 ? 0 : (disc.Tracks[disc.Tracks.size() - 1].LastSector + 1);
 		for(size_t j = 0; j < files[i].Tracks.size(); j++) {
 			CueTrackEntry entry = files[i].Tracks[j];
 			TrackInfo trk = {};
@@ -161,13 +179,13 @@ bool CdReader::LoadCue(VirtualFile& cueFile, DiscInfo& disc)
 			for(CueIndexEntry& idx : entry.Indexes) {
 				if(idx.Number == 0) {
 					trk.HasLeadIn = true;
-					trk.LeadInPosition = DiscPosition::FromLba(idx.Position.ToLba() + sectorsInPrevFiles);
+					trk.LeadInPosition = DiscPosition::FromLba(idx.Position.ToLba() + startSector);
 				} else if(idx.Number == 1) {
 					if(entry.PreGap.HasGap) {
 						trk.HasLeadIn = true;
-						trk.LeadInPosition = DiscPosition::FromLba(idx.Position.ToLba() + totalPregapLbaLength - entry.PreGap.Length.ToLba() + sectorsInPrevFiles);
+						trk.LeadInPosition = DiscPosition::FromLba(idx.Position.ToLba() + totalPregapLbaLength - entry.PreGap.Length.ToLba() + startSector);
 					}
-					trk.StartPosition = DiscPosition::FromLba(idx.Position.ToLba() + totalPregapLbaLength + sectorsInPrevFiles);
+					trk.StartPosition = DiscPosition::FromLba(idx.Position.ToLba() + totalPregapLbaLength + startSector);
 					startPos = idx.Position;
 				} else {
 					MessageManager::Log("[CUE] Unsupported index number: " + std::to_string(idx.Number));
@@ -197,8 +215,6 @@ bool CdReader::LoadCue(VirtualFile& cueFile, DiscInfo& disc)
 					prvTrk.LastSector = prvTrk.EndPosition.ToLba();
 					prvTrk.SectorCount = prvTrk.LastSector - prvTrk.FirstSector + 1;
 					prvTrk.Size = prvTrk.SectorCount * trk.GetSectorSize();
-					sectorsInFile += prvTrk.SectorCount;
-
 					currentFileOffset = prvTrk.FileOffset + prvTrk.Size;
 				}
 			}
@@ -218,14 +234,12 @@ bool CdReader::LoadCue(VirtualFile& cueFile, DiscInfo& disc)
 		lastTrk.SectorCount = lastTrk.Size / lastTrk.GetSectorSize();
 		lastTrk.EndPosition = DiscPosition::FromLba(lastTrk.FirstSector + lastTrk.SectorCount - 1);
 		lastTrk.LastSector = lastTrk.EndPosition.ToLba();
-		sectorsInFile += lastTrk.SectorCount;
-		sectorsInPrevFiles += sectorsInFile;
 	}
 
 	TrackInfo& discLastTrk = disc.Tracks[disc.Tracks.size() - 1];
-	disc.EndPosition = discLastTrk.EndPosition;
 	disc.DiscSize = discLastTrk.FileOffset + discLastTrk.Size;
 	disc.DiscSectorCount = discLastTrk.LastSector + 1;
+	disc.EndPosition = DiscPosition::FromLba(disc.DiscSectorCount + 2 * 75);
 
 	MessageManager::Log("---- DISC TRACKS ----");
 	int i = 1;

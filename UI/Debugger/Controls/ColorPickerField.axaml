@@ -5,14 +5,14 @@
 	xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
 	xmlns:l="using:Mesen.Localization"
 	xmlns:u="using:Mesen.Utilities"
-	xmlns:cp="using:ThemeEditor.Controls.ColorPicker"
+	xmlns:cp="using:Avalonia.Markup.Xaml.Converters"
 	mc:Ignorable="d" d:DesignWidth="400" d:DesignHeight="50"
 	x:Name="root"
 	HorizontalAlignment="Stretch"
 	x:Class="Mesen.Debugger.Controls.ColorPickerField"
 >
 	<UserControl.Resources>
-		<cp:ColorToBrushConverter x:Key="ColorToBrushConverter"/>
+		<u:ArgbColorToBrushConverter x:Key="ColorToBrushConverter" />
 	</UserControl.Resources>
 	
 	<StackPanel Orientation="Horizontal" DataContext="{Binding ElementName=root}">

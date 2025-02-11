@@ -35,22 +35,26 @@ protected:
 	bool IsOddFrame();
 	uint32_t GetVideoPhase();
 	uint32_t GetBufferSize();
-	
-	template<typename T> bool NtscFilterOptionsChanged(T& ntscSetup);
-	template<typename T> void InitNtscFilter(T& ntscSetup);
+
+protected:
+	virtual FrameInfo GetFrameInfo();
 
 public:
 	BaseVideoFilter(Emulator* emu);
 	virtual ~BaseVideoFilter();
+
+	template<typename T> bool NtscFilterOptionsChanged(T& ntscSetup, VideoConfig& cfg);
+	template<typename T> static void InitNtscFilter(T& ntscSetup, VideoConfig& cfg);
 
 	uint32_t* GetOutputBuffer();
 	FrameInfo SendFrame(uint16_t *ppuOutputBuffer, uint32_t frameNumber, uint32_t videoPhase, void* frameData, bool enableOverscan = true);
 	void TakeScreenshot(string romName, VideoFilterType filterType);
 	void TakeScreenshot(VideoFilterType filterType, string filename, std::stringstream *stream = nullptr);
 
+	virtual HudScaleFactors GetScaleFactor() { return { 1.0, 1.0 }; }
 	virtual OverscanDimensions GetOverscan();
 	void SetOverscan(OverscanDimensions dimensions);
-	virtual FrameInfo GetFrameInfo();
+	FrameInfo GetFrameInfo(uint16_t* ppuOutputBuffer, bool enableOverscan);
 
 	void SetBaseFrameInfo(FrameInfo frameInfo);
 };

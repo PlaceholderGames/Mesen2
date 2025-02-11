@@ -41,37 +41,45 @@ void SmsMemoryManager::Init(Emulator* emu, SmsConsole* console, vector<uint8_t>&
 	memcpy(_prgRom, romData.data(), _prgRomSize);
 	_emu->RegisterMemory(MemoryType::SmsPrgRom, _prgRom, _prgRomSize);
 
-	_workRam = new uint8_t[SmsMemoryManager::WorkRamSize];
-	console->InitializeRam(_workRam, SmsMemoryManager::WorkRamSize);
-	_emu->RegisterMemory(MemoryType::SmsWorkRam, _workRam, SmsMemoryManager::WorkRamSize);
+	_model = _console->GetModel();
+	bool isSg1000 = _model == SmsModel::Sg;
+	bool isCv = _model == SmsModel::ColecoVision;
 
-	bool isSg1000 = _console->GetRomFormat() == RomFormat::Sg;
+	_workRamSize = isCv ? SmsMemoryManager::CvWorkRamSize : SmsMemoryManager::SmsWorkRamSize;
+
+	_workRam = new uint8_t[_workRamSize];
+	console->InitializeRam(_workRam, _workRamSize);
+	_emu->RegisterMemory(MemoryType::SmsWorkRam, _workRam, _workRamSize);
 
 	if(biosRom.size() >= 0x400) {
-		_biosMapper.reset(new SmsBiosMapper(this));
 		_biosRom = new uint8_t[biosRom.size()];
 		_biosRomSize = (uint32_t)biosRom.size();
 		memcpy(_biosRom, biosRom.data(), _biosRomSize);
-		_emu->RegisterMemory(MemoryType::SmsBootRom, _biosRom, _biosRomSize);
 		_state.BiosEnabled = true;
+		_emu->RegisterMemory(MemoryType::SmsBootRom, _biosRom, _biosRomSize);
+		if(!isCv) {
+			_biosMapper.reset(new SmsBiosMapper(this));
+		}
 	} else {
 		if(isSg1000) {
 			_state.CardEnabled = true;
 		} else {
 			_state.CartridgeEnabled = true;
 		}
-		memset(_workRam, 0, SmsMemoryManager::WorkRamSize);
+		memset(_workRam, 0, _workRamSize);
 
 		//default value for $3E that some games expect after bios runs
-		_workRam[0] = _console->GetRomFormat() == RomFormat::GameGear ? 0xA8 : 0xAB;
+		_workRam[0] = _model == SmsModel::GameGear ? 0xA8 : 0xAB;
 	}
 
-	if(_console->GetRomFormat() == RomFormat::GameGear) {
+	if(_model == SmsModel::GameGear) {
 		_state.CartridgeEnabled = true;
 	}
 
 	if(isSg1000) {
 		_cartRamSize = DetectSgCartRam(romData);
+	} else if(isCv) {
+		_cartRamSize = 0;
 	} else {
 		_cartRamSize = SmsMemoryManager::CartRamMaxSize;
 	}
@@ -80,7 +88,7 @@ void SmsMemoryManager::Init(Emulator* emu, SmsConsole* console, vector<uint8_t>&
 	console->InitializeRam(_cartRam, _cartRamSize);
 	_emu->RegisterMemory(MemoryType::SmsCartRam, _cartRam, _cartRamSize);
 
-	if(!isSg1000) {
+	if(!isSg1000 && !isCv) {
 		LoadBattery();
 		_originalCartRam = new uint8_t[_cartRamSize];
 		memcpy(_originalCartRam, _cartRam, _cartRamSize);
@@ -89,6 +97,10 @@ void SmsMemoryManager::Init(Emulator* emu, SmsConsole* console, vector<uint8_t>&
 	_state.WorkRamEnabled = true;
 	_state.IoEnabled = true;
 
+	//Power on values unverified, probably incorrect?
+	_state.GgExtConfig = 0x7F;
+	_state.GgExtData = 0xFF;
+
 	RefreshMappings();
 }
 
@@ -96,25 +108,34 @@ void SmsMemoryManager::RefreshMappings()
 {
 	Unmap(0, 0xFFFF);
 	MapRegisters(0, 0xFFFF, SmsRegisterAccess::None);
-
-	RomFormat romFormat = _console->GetRomFormat();
-	if(_state.CartridgeEnabled && romFormat != RomFormat::Sg) {
-		_cart->RefreshMappings();
-	}
-
-	if(_state.CardEnabled && romFormat == RomFormat::Sg) {
-		Map(0x0000, 0xBFFF, MemoryType::SmsPrgRom, 0, true);
-		if(_sgRamMapAddress >= 0 && _cartRamSize > 0) {
-			Map(_sgRamMapAddress, _sgRamMapAddress + _cartRamSize - 1, MemoryType::SmsCartRam, 0, false);
+	if(_model == SmsModel::ColecoVision) {
+		Map(0x0000, 0x1FFF, MemoryType::SmsBootRom, 0, true);
+		for(int i = 0; i < 8; i++) {
+			Map(0x6000+i*0x400, 0x63FF+i*0x400, MemoryType::SmsWorkRam, 0, false);
 		}
-	}
+		
+		//Don't mirror rom (Sammy Lightfoot breaks if mirrored)
+		Map(0x8000, std::min<int>(0x8000 + _prgRomSize - 1, 0xFFFF), MemoryType::SmsPrgRom, 0, true);
+	} else {
+		if(_state.CartridgeEnabled && _model != SmsModel::Sg) {
+			_cart->RefreshMappings();
+		}
 
-	if(_state.WorkRamEnabled) {
-		Map(0xC000, 0xFFFF, MemoryType::SmsWorkRam, 0, false);
-	}
+		if(_state.CardEnabled && _model == SmsModel::Sg) {
+			Map(0x0000, 0xBFFF, MemoryType::SmsPrgRom, 0, true);
+			if(_sgRamMapAddress >= 0 && _cartRamSize > 0) {
+				Map(_sgRamMapAddress, _sgRamMapAddress + _cartRamSize - 1, MemoryType::SmsCartRam, 0, false);
+			}
+		}
 
-	if(_biosMapper && _state.BiosEnabled && (romFormat == RomFormat::GameGear || !_state.CartridgeEnabled)) {
-		_biosMapper->RefreshMappings();
+		if(_state.WorkRamEnabled) {
+			Map(0xC000, 0xFFFF, MemoryType::SmsWorkRam, 0, false);
+		}
+
+		if(_biosMapper && _state.BiosEnabled && (_model == SmsModel::GameGear || !_state.CartridgeEnabled)) {
+			bool enableCart = _model == SmsModel::GameGear;
+			_biosMapper->RefreshMappings(enableCart);
+		}
 	}
 }
 
@@ -125,11 +146,6 @@ bool SmsMemoryManager::HasBios()
 
 void SmsMemoryManager::LoadBattery()
 {
-	if(_originalCartRam == nullptr) {
-		//SG-1000 with ext ram adapter (Taiwanese games)
-		return;
-	}
-	
 	_emu->GetBatteryManager()->LoadBattery(".sav", _cartRam, SmsMemoryManager::CartRamMaxSize);
 }
 
@@ -171,7 +187,7 @@ AddressInfo SmsMemoryManager::GetAbsoluteAddress(uint16_t addr)
 	if(ptr >= _prgRom && ptr < _prgRom + _prgRomSize) {
 		addrInfo.Address = (int32_t)(ptr - _prgRom);
 		addrInfo.Type = MemoryType::SmsPrgRom;
-	} else if(ptr >= _workRam && ptr < _workRam + SmsMemoryManager::WorkRamSize) {
+	} else if(ptr >= _workRam && ptr < _workRam + _workRamSize) {
 		addrInfo.Address = (int32_t)(ptr - _workRam);
 		addrInfo.Type = MemoryType::SmsWorkRam;
 	} else if(ptr >= _cartRam && ptr < _cartRam + SmsMemoryManager::CartRamMaxSize) {
@@ -296,58 +312,10 @@ template<bool isPeek>
 uint8_t SmsMemoryManager::InternalReadPort(uint8_t port)
 {
 	uint8_t value;
-	if(_console->GetRomFormat() == RomFormat::GameGear) {
-		if(port <= 0x06) {
-			value = ReadGameGearPort(port);
-		} else if(port < 0x40) {
-			value = 0xFF;
-		} else if(port < 0xC0) {
-			value = isPeek ? _vdp->PeekPort(port) : _vdp->ReadPort(port);
-		} else {
-			switch(port) {
-				case 0xC0:
-				case 0xDC:
-					value = _controlManager->ReadPort(0);
-					break;
-
-				case 0xC1:
-				case 0xDD:
-					value = _controlManager->ReadPort(1);
-					break;
-
-				default:
-					value = 0xFF;
-					break;
-			}
-		}
-	} else {
-		switch(port & 0xC1) {
-			case 0x00: value = GetOpenBus(); break; //Port 3E (Memory Control)
-
-			case 0x40: case 0x41: case 0x80: case 0x81:
-				//Ports: 7E (V counter), 7F (H counter), BE (VDP data), BF (VDP control)
-				value = isPeek ? _vdp->PeekPort(port) : _vdp->ReadPort(port);
-				break;
-
-			case 0xC0: 
-				//Port DC (IO Port A/B)
-				if(_state.IoEnabled) {
-					value = _controlManager->ReadPort(0);
-				} else if(port == 0xF2) {
-					if(_emu->GetSettings()->GetSmsConfig().EnableFmAudio) {
-						value = _fmAudio->Read();
-					} else {
-						value = GetOpenBus();
-					}
-				} else {
-					value = GetOpenBus();
-				}
-				break; 
-
-			case 0xC1: value = _state.IoEnabled ? _controlManager->ReadPort(1) : GetOpenBus(); break; //Port DD (IO Port B/Misc)
-
-			default: value = GetOpenBus(); break;
-		}
+	switch(_model) {
+		case SmsModel::ColecoVision: value = ReadColecoVisionPort<isPeek>(port); break;
+		case SmsModel::GameGear: value = ReadGameGearPort<isPeek>(port); break;
+		default: value = ReadSmsPort<isPeek>(port);
 	}
 
 	if constexpr(!isPeek) {
@@ -359,48 +327,127 @@ uint8_t SmsMemoryManager::InternalReadPort(uint8_t port)
 void SmsMemoryManager::WritePort(uint8_t port, uint8_t value)
 {
 	_emu->ProcessMemoryAccess<CpuType::Sms, MemoryType::SmsPort, MemoryOperationType::Write>(port, value);
-	bool isGameGear = _console->GetRomFormat() == RomFormat::GameGear;
-	if(port <= 0x06 && isGameGear) {
-		WriteGameGearPort(port, value);
-	} else {
-		switch(port & 0xC1) {
-			case 0x00: {
-				//Port 3E (Memory Control)
-				bool isSms1 = _console->GetRevision() == SmsRevision::Sms1;
-				_state.ExpEnabled = (value & 0x80) == 0 && !isSms1; //TODOSMS not implemented
-				_state.CartridgeEnabled = (value & 0x40) == 0 || isGameGear;
-				_state.CardEnabled = (value & 0x20) == 0 && !isSms1;
-				_state.WorkRamEnabled = (value & 0x10) == 0;
-				_state.BiosEnabled = (value & 0x08) == 0;
-				_state.IoEnabled = (value & 0x04) == 0 || isGameGear;
-				RefreshMappings();
-				break;
-			}
-
-			case 0x01:
-				//Port 3F (IO Port Control)
-				_controlManager->WriteControlPort(value);
-				break;
-
-			case 0x40: case 0x41:
-				_psg->Write(value);
-				break;
-
-			case 0x80: case 0x81:
-				//Ports: BE (VDP data), BF (VDP control)
-				_vdp->WritePort(port, value);
-				break;
-
-			case 0xC0:
-			case 0xC1:
-				if(_emu->GetSettings()->GetSmsConfig().EnableFmAudio) {
-					_fmAudio->Write(port, value);
-				}
-				break;
-		}
+	switch(_model) {
+		case SmsModel::ColecoVision: WriteColecoVisionPort(port, value); break;
+		case SmsModel::GameGear: WriteGameGearPort(port, value); break;
+		default: WriteSmsPort(port, value); break;
 	}
 }
 
+void SmsMemoryManager::WriteSmsPort(uint8_t port, uint8_t value)
+{
+	bool isGameGear = _model == SmsModel::GameGear;
+
+	switch(port & 0xC1) {
+		case 0x00: {
+			//Port 3E (Memory Control)
+			bool isSms1 = _console->GetRevision() == SmsRevision::Sms1;
+			_state.ExpEnabled = (value & 0x80) == 0 && !isSms1; //TODOSMS not implemented
+			_state.CartridgeEnabled = (value & 0x40) == 0 || isGameGear;
+			_state.CardEnabled = (value & 0x20) == 0 && !isSms1;
+			_state.WorkRamEnabled = (value & 0x10) == 0;
+			_state.BiosEnabled = (value & 0x08) == 0;
+			_state.IoEnabled = (value & 0x04) == 0 || isGameGear;
+			RefreshMappings();
+			break;
+		}
+
+		case 0x01:
+			//Port 3F (IO Port Control)
+			_controlManager->WriteControlPort(value);
+			break;
+
+		case 0x40: case 0x41:
+			_psg->Write(value);
+			break;
+
+		case 0x80: case 0x81:
+			//Ports: BE (VDP data), BF (VDP control)
+			_vdp->WritePort(port, value);
+			break;
+
+		case 0xC0:
+		case 0xC1:
+			if(_emu->GetSettings()->GetSmsConfig().EnableFmAudio) {
+				_fmAudio->Write(port, value);
+			}
+			break;
+	}
+}
+
+void SmsMemoryManager::WriteColecoVisionPort(uint8_t port, uint8_t value)
+{
+	switch(port & 0xE0) {
+		case 0x80: _controlManager->WriteControlPort(0); break;
+		case 0xC0: _controlManager->WriteControlPort(1); break;
+		case 0xE0: _psg->Write(value); break;
+		case 0xA0: _vdp->WritePort(port, value); break;
+	}
+}
+
+void SmsMemoryManager::WriteGameGearPort(uint8_t port, uint8_t value)
+{
+	switch(port) {
+		case 0: break; //read-only
+
+		//TODOSMS GG - input/output ext port
+		case 1: _state.GgExtData = value & 0x7F; break;
+		case 2: _state.GgExtConfig = value; break;
+		case 3: _state.GgSendData = value; break;
+		case 4: break; //read-only
+		case 5: _state.GgSerialConfig = value; break;
+
+		//Sound panning - write-only
+		case 6:
+			_psg->WritePanningReg(value);
+			break;
+
+		default:
+			WriteSmsPort(port, value);
+			break;
+	}
+}
+
+template<bool isPeek>
+uint8_t SmsMemoryManager::ReadSmsPort(uint8_t port)
+{
+	switch(port & 0xC1) {
+		case 0x00: return GetOpenBus(); //Port 3E (Memory Control)
+
+		case 0x40: case 0x41: case 0x80: case 0x81:
+			//Ports: 7E (V counter), 7F (H counter), BE (VDP data), BF (VDP control)
+			return isPeek ? _vdp->PeekPort(port) : _vdp->ReadPort(port);
+
+		case 0xC0:
+			//Port DC (IO Port A/B)
+			if(_state.IoEnabled) {
+				return _controlManager->ReadPort(0);
+			} else if(port == 0xF2) {
+				if(_emu->GetSettings()->GetSmsConfig().EnableFmAudio) {
+					return _fmAudio->Read();
+				} else {
+					return GetOpenBus();
+				}
+			}
+			return GetOpenBus();
+
+		case 0xC1: return _state.IoEnabled ? _controlManager->ReadPort(1) : GetOpenBus(); //Port DD (IO Port B/Misc)
+
+		default: return GetOpenBus();
+	}
+}
+
+template<bool isPeek>
+uint8_t SmsMemoryManager::ReadColecoVisionPort(uint8_t port)
+{
+	switch(port & 0xE0) {
+		case 0xA0: return isPeek ? _vdp->PeekPort(port) : _vdp->ReadPort(port);
+		case 0xE0: return _controlManager->ReadPort((port >> 1) & 0x01);
+		default: return 0xFF;
+	}
+}
+
+template<bool isPeek>
 uint8_t SmsMemoryManager::ReadGameGearPort(uint8_t port)
 {
 	switch(port) {
@@ -415,36 +462,32 @@ uint8_t SmsMemoryManager::ReadGameGearPort(uint8_t port)
 		}
 
 		//TODOSMS GG - input/output ext port
-		case 1: return 0x7F;
-		case 2: return 0xFF;
-		case 3: return 0x00;
+		case 1: return _state.GgExtData;
+		case 2: return _state.GgExtConfig;
+		case 3: return _state.GgSendData;
 		case 4: return 0xFF;
-		case 5: return 0x00;
+		case 5: return _state.GgSerialConfig;
 
 		//Sound panning - write-only
 		case 6: return 0xFF;
+
+		default:
+			if(port < 0x40) {
+				return 0xFF;
+			} else if(port < 0xC0) {
+				return isPeek ? _vdp->PeekPort(port) : _vdp->ReadPort(port);
+			} else {
+				switch(port) {
+					case 0xC0: case 0xDC:
+						return _controlManager->ReadPort(0);
+
+					case 0xC1: case 0xDD:
+						return _controlManager->ReadPort(1);
+				}
+			}
 	}
 
 	return 0xFF;
-}
-
-void SmsMemoryManager::WriteGameGearPort(uint8_t port, uint8_t value)
-{
-	switch(port) {
-		case 0: break; //read-only
-
-		//TODOSMS GG - input/output ext port
-		case 1: break;
-		case 2: break;
-		case 3: break;
-		case 4: break; //read-only
-		case 5: break;
-
-		//Sound panning - write-only
-		case 6:
-			_psg->WritePanningReg(value);
-			break;
-	}
 }
 
 uint32_t SmsMemoryManager::DetectSgCartRam(vector<uint8_t>& romData)
@@ -494,10 +537,15 @@ void SmsMemoryManager::Serialize(Serializer& s)
 	SV(_state.BiosEnabled);
 	SV(_state.IoEnabled);
 
+	SV(_state.GgExtData);
+	SV(_state.GgExtConfig);
+	SV(_state.GgSendData);
+	SV(_state.GgSerialConfig);
+
 	if(_cartRamSize > 0) {
 		SVArray(_cartRam, _cartRamSize);
 	}
-	SVArray(_workRam, SmsMemoryManager::WorkRamSize);
+	SVArray(_workRam, _workRamSize);
 
 	if(!s.IsSaving()) {
 		RefreshMappings();

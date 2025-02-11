@@ -46,12 +46,13 @@ private:
 	
 	void GenerateNtscSignal(int8_t *ntscSignal, int &phase, int rowNumber);
 	void DecodeFrame(int startRow, int endRow, uint16_t *ppuOutputBuffer, uint32_t* outputBuffer, int startPhase);
-	void OnBeforeApplyFilter();
+	void OnBeforeApplyFilter() override;
 
 public:
 	BisqwitNtscFilter(Emulator* emu);
 	virtual ~BisqwitNtscFilter();
 
-	virtual void ApplyFilter(uint16_t *ppuOutputBuffer);
-	virtual FrameInfo GetFrameInfo();
+	void ApplyFilter(uint16_t *ppuOutputBuffer) override;
+	FrameInfo GetFrameInfo() override;
+	HudScaleFactors GetScaleFactor() override;
 };

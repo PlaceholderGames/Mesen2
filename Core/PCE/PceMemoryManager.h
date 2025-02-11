@@ -89,7 +89,7 @@ public:
 	uint8_t GetMprValue(uint8_t regSelect);
 
 	AddressInfo GetAbsoluteAddress(uint32_t relAddr);
-	AddressInfo GetRelativeAddress(AddressInfo absAddr);
+	AddressInfo GetRelativeAddress(AddressInfo absAddr, uint16_t pc);
 
 	void SetIrqSource(PceIrqSource source) { _state.ActiveIrqs |= (int)source; }
 	__forceinline uint8_t GetPendingIrqs() { return (_state.ActiveIrqs & ~_state.DisabledIrqs); }
@@ -128,13 +128,17 @@ __forceinline void PceMemoryManager::Write(uint16_t addr, uint8_t value, MemoryO
 			_mapper->Write(bank, addr, value);
 		}
 
-		addr &= 0x1FFF;
-		if(bank != 0xFF) {
+		if(bank == 0xF7) {
+			if(_writeBanks[bank] && (addr & 0x1FFF) <= 0x7FF) {
+				//Only allow writes to the first 2kb - save RAM is not mirrored
+				_writeBanks[bank][addr & 0x7FF] = value;
+			}
+		} else if(bank != 0xFF) {
 			if(_writeBanks[bank]) {
-				_writeBanks[bank][addr] = value;
+				_writeBanks[bank][addr & 0x1FFF] = value;
 			}
 		} else {
-			WriteRegister(addr, value);
+			WriteRegister(addr & 0x1FFF, value);
 		}
 	}
 }

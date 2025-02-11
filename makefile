@@ -59,7 +59,12 @@ DEBUG ?= 0
 ifeq ($(DEBUG),0)
 	MESENFLAGS += -O3
 	ifneq ($(LTO),false)
-		MESENFLAGS += -flto -DHAVE_LTO
+		MESENFLAGS += -DHAVE_LTO
+		ifneq ($(USE_GCC),true)
+			MESENFLAGS += -flto=thin
+		else
+			MESENFLAGS += -flto=auto
+		endif
 	endif
 else
 	MESENFLAGS += -O0 -g
@@ -94,7 +99,12 @@ ifneq ($(STATICLINK),false)
 	LINKOPTIONS += -static-libgcc -static-libstdc++ 
 endif
 
-CXXFLAGS = -fPIC -Wall --std=c++17 $(MESENFLAGS) $(SDL2INC) -I $(realpath ./) -I $(realpath ./Core) -I $(realpath ./Utilities) -I $(realpath ./Linux)
+ifeq ($(MESENOS),osx)
+	LINKOPTIONS += -framework Foundation -framework Cocoa -framework GameController -framework CoreHaptics -Wl,-rpath,/opt/local/lib
+endif
+
+CXXFLAGS = -fPIC -Wall --std=c++17 $(MESENFLAGS) $(SDL2INC) -I $(realpath ./) -I $(realpath ./Core) -I $(realpath ./Utilities) -I $(realpath ./Sdl) -I $(realpath ./Linux) -I $(realpath ./MacOS)
+OBJCXXFLAGS = $(CXXFLAGS)
 CFLAGS = -fPIC -Wall $(MESENFLAGS)
 
 OBJFOLDER := obj.$(MESENPLATFORM)
@@ -102,13 +112,21 @@ DEBUGFOLDER := bin/$(MESENPLATFORM)/Debug
 RELEASEFOLDER := bin/$(MESENPLATFORM)/Release
 ifeq ($(DEBUG), 0)
 	OUTFOLDER = $(RELEASEFOLDER)
-	BUILD_TYPE = Release
+	BUILD_TYPE := Release
+	OPTIMIZEUI := -p:OptimizeUi=true
 else
 	OUTFOLDER = $(DEBUGFOLDER)
-	BUILD_TYPE = Debug
+	BUILD_TYPE := Debug
+	OPTIMIZEUI :=
 endif
 
-PUBLISHFLAGS ?=  -r $(MESENPLATFORM) --no-self-contained true -p:PublishSingleFile=true
+
+ifeq ($(USE_AOT),true)
+	PUBLISHFLAGS ?=  -r $(MESENPLATFORM) -p:PublishSingleFile=false -p:PublishAot=true -p:SelfContained=true
+else
+	PUBLISHFLAGS ?=  -r $(MESENPLATFORM) --no-self-contained true -p:PublishSingleFile=true
+endif
+
 
 CORESRC := $(shell find Core -name '*.cpp')
 COREOBJ := $(CORESRC:.cpp=.o)
@@ -116,14 +134,28 @@ COREOBJ := $(CORESRC:.cpp=.o)
 UTILSRC := $(shell find Utilities -name '*.cpp' -o -name '*.c')
 UTILOBJ := $(addsuffix .o,$(basename $(UTILSRC)))
 
-LINUXSRC := $(shell find Linux -name '*.cpp')
-LINUXOBJ := $(LINUXSRC:.cpp=.o)
+SDLSRC := $(shell find Sdl -name '*.cpp')
+SDLOBJ := $(SDLSRC:.cpp=.o)
 
 SEVENZIPSRC := $(shell find SevenZip -name '*.c')
 SEVENZIPOBJ := $(SEVENZIPSRC:.c=.o)
 
 LUASRC := $(shell find Lua -name '*.c')
 LUAOBJ := $(LUASRC:.c=.o)
+
+ifeq ($(MESENOS),linux)
+	LINUXSRC := $(shell find Linux -name '*.cpp')
+else
+	LINUXSRC :=
+endif
+LINUXOBJ := $(LINUXSRC:.cpp=.o)
+
+ifeq ($(MESENOS),osx)
+	MACOSSRC := $(shell find MacOS -name '*.mm')
+else
+	MACOSSRC :=
+endif
+MACOSOBJ := $(MACOSSRC:.mm=.o)
 
 DLLSRC := $(shell find InteropDLL -name '*.cpp')
 DLLOBJ := $(DLLSRC:.cpp=.o)
@@ -137,6 +169,12 @@ else
 	LIBEVDEVINC := -I../
 endif
 
+ifeq ($(MESENOS),linux)
+	X11LIB := -lX11
+else
+	X11LIB :=
+endif
+
 FSLIB := -lstdc++fs
 
 ifeq ($(MESENOS),osx)
@@ -144,7 +182,11 @@ ifeq ($(MESENOS),osx)
 	LIBEVDEVINC := 
 	LIBEVDEVSRC := 
 	FSLIB := 
-	PUBLISHFLAGS := -t:BundleApp -p:UseAppHost=true -p:RuntimeIdentifier=$(MESENPLATFORM) -p:SelfContained=true -p:PublishSingleFile=false -p:PublishReadyToRun=false
+	ifeq ($(USE_AOT),true)
+		PUBLISHFLAGS := -t:BundleApp -p:UseAppHost=true -p:RuntimeIdentifier=$(MESENPLATFORM) -p:PublishSingleFile=false -p:PublishAot=true -p:SelfContained=true
+	else
+		PUBLISHFLAGS := -t:BundleApp -p:UseAppHost=true -p:RuntimeIdentifier=$(MESENPLATFORM) -p:SelfContained=true -p:PublishSingleFile=false -p:PublishReadyToRun=false
+	endif
 endif
 
 all: ui
@@ -154,13 +196,13 @@ ui: InteropDLL/$(OBJFOLDER)/$(SHAREDLIB)
 	rm -fr $(OUTFOLDER)/Dependencies/*
 	cp InteropDLL/$(OBJFOLDER)/$(SHAREDLIB) $(OUTFOLDER)/$(SHAREDLIB)
 	#Called twice because the first call copies native libraries to the bin folder which need to be included in Dependencies.zip
-	cd UI && dotnet publish -c $(BUILD_TYPE) -p:OptimizeUi="true" $(PUBLISHFLAGS)
-	cd UI && dotnet publish -c $(BUILD_TYPE) -p:OptimizeUi="true" $(PUBLISHFLAGS)
+	cd UI && dotnet publish -c $(BUILD_TYPE) $(OPTIMIZEUI) $(PUBLISHFLAGS)
+	cd UI && dotnet publish -c $(BUILD_TYPE) $(OPTIMIZEUI) $(PUBLISHFLAGS)
 
 core: InteropDLL/$(OBJFOLDER)/$(SHAREDLIB)
 
 pgohelper: InteropDLL/$(OBJFOLDER)/$(SHAREDLIB)
-	mkdir -p PGOHelper/$(OBJFOLDER) && cd PGOHelper/$(OBJFOLDER) && $(CXX) $(CXXFLAGS) $(LINKCHECKUNRESOLVED) -o pgohelper ../PGOHelper.cpp ../../bin/pgohelperlib.so -pthread $(FSLIB) $(SDL2LIB) $(LIBEVDEVLIB)
+	mkdir -p PGOHelper/$(OBJFOLDER) && cd PGOHelper/$(OBJFOLDER) && $(CXX) $(CXXFLAGS) $(LINKCHECKUNRESOLVED) -o pgohelper ../PGOHelper.cpp ../../bin/pgohelperlib.so -pthread $(FSLIB) $(SDL2LIB) $(LIBEVDEVLIB) $(X11LIB)
 
 %.o: %.c
 	$(CC) $(CFLAGS) -c $< -o $@
@@ -168,10 +210,13 @@ pgohelper: InteropDLL/$(OBJFOLDER)/$(SHAREDLIB)
 %.o: %.cpp
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
-InteropDLL/$(OBJFOLDER)/$(SHAREDLIB): $(SEVENZIPOBJ) $(LUAOBJ) $(UTILOBJ) $(COREOBJ) $(LIBEVDEVOBJ) $(LINUXOBJ) $(DLLOBJ)
+%.o: %.mm
+	$(CXX) $(OBJCXXFLAGS) -c $< -o $@
+
+InteropDLL/$(OBJFOLDER)/$(SHAREDLIB): $(SEVENZIPOBJ) $(LUAOBJ) $(UTILOBJ) $(COREOBJ) $(SDLOBJ) $(LIBEVDEVOBJ) $(LINUXOBJ) $(DLLOBJ) $(MACOSOBJ)
 	mkdir -p bin
 	mkdir -p InteropDLL/$(OBJFOLDER)
-	$(CXX) $(CXXFLAGS) $(LINKOPTIONS) $(LINKCHECKUNRESOLVED) -shared -o $(SHAREDLIB) $(DLLOBJ) $(SEVENZIPOBJ) $(LUAOBJ) $(LINUXOBJ) $(LIBEVDEVOBJ) $(UTILOBJ) $(COREOBJ) $(SDL2INC) -pthread $(FSLIB) $(SDL2LIB) $(LIBEVDEVLIB)
+	$(CXX) $(CXXFLAGS) $(LINKOPTIONS) $(LINKCHECKUNRESOLVED) -shared -o $(SHAREDLIB) $(DLLOBJ) $(SEVENZIPOBJ) $(LUAOBJ) $(LINUXOBJ) $(MACOSOBJ) $(LIBEVDEVOBJ) $(UTILOBJ) $(SDLOBJ) $(COREOBJ) $(SDL2INC) -pthread $(FSLIB) $(SDL2LIB) $(LIBEVDEVLIB) $(X11LIB)
 	cp $(SHAREDLIB) bin/pgohelperlib.so
 	mv $(SHAREDLIB) InteropDLL/$(OBJFOLDER)
 
@@ -185,6 +230,8 @@ clean:
 	rm -r -f $(COREOBJ)
 	rm -r -f $(UTILOBJ)
 	rm -r -f $(LINUXOBJ) $(LIBEVDEVOBJ)
+	rm -r -f $(SDLOBJ)
 	rm -r -f $(SEVENZIPOBJ)
 	rm -r -f $(LUAOBJ)
+	rm -r -f $(MACOSOBJ)
 	rm -r -f $(DLLOBJ)

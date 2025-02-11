@@ -1,4 +1,5 @@
-﻿using Avalonia.Media;
+﻿using Avalonia.Controls;
+using Avalonia.Media;
 using Mesen.Config;
 using System;
 using System.Collections.Generic;
@@ -134,6 +135,16 @@ namespace Mesen.Utilities
 			}
 		}
 
+		public static Color GetColor(UInt32 u32Color)
+		{
+			Color color = Color.FromUInt32(u32Color);
+			if(ConfigManager.ActiveTheme == MesenTheme.Dark) {
+				return InvertBrightness(color);
+			} else {
+				return color;
+			}
+		}
+
 		private static double GetColorLuminance(Color color)
 		{
 			double r = color.R / 255.0;
@@ -175,6 +186,14 @@ namespace Mesen.Utilities
 				return Colors.Black;
 			}
 			return Colors.White;
+		}
+
+		public static void InvalidateControlOnThemeChange(Control ctrl, Action? callback = null)
+		{
+			ctrl.ActualThemeVariantChanged += (s, e) => {
+				callback?.Invoke();
+				ctrl.InvalidateVisual();
+			};
 		}
 	}
 

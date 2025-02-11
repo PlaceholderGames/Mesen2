@@ -15,6 +15,7 @@ class PceAdpcm final : public IAudioProvider, public ISerializable
 {
 private:
 	Emulator* _emu = nullptr;
+	PceConsole* _console = nullptr;
 	PceCdRom* _cdrom = nullptr;
 	PceScsiBus* _scsi = nullptr;
 	uint8_t* _ram = nullptr;
@@ -24,8 +25,9 @@ private:
 	vector<int16_t> _samplesToPlay;
 	int16_t _currentOutput = 0;
 	uint8_t _magnitude = 0;
+	uint8_t _dmaWriteCounter = 0;
 	bool _needExec = true;
-	
+
 	double _clocksPerSample = PceConstants::MasterClockRate / 32000.0;
 	double _nextSampleCounter = 0;
 
@@ -87,10 +89,13 @@ private:
 	void Reset();
 	void SetHalfReached(bool value);
 	void SetEndReached(bool value);
+	bool IsLengthLatchEnabled();
+	void ProcessFlags();
 	void SetControl(uint8_t value);
 	void ProcessReadOperation();
 	void ProcessWriteOperation();
 	void ProcessDmaRequest();
+	uint8_t GetClocksToNextSlot(bool forRead);
 	void PlaySample();
 
 public:

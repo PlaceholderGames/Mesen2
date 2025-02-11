@@ -45,6 +45,7 @@ private:
 
 public:
 	PceConsole(Emulator* emu);
+	virtual ~PceConsole();
 	
 	static vector<string> GetSupportedExtensions() { return { ".pce", ".cue", ".sgx", ".hes" }; }
 	static vector<string> GetSupportedSignatures() { return { "HESM" }; }
@@ -58,6 +59,8 @@ public:
 	LoadRomResult LoadRom(VirtualFile& romFile) override;
 
 	void RunFrame() override;
+
+	void ProcessEndOfFrame();
 
 	void SaveBattery() override;
 

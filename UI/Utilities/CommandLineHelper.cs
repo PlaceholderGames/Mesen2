@@ -131,10 +131,19 @@ public class CommandLineHelper
 	{
 		if(LuaScriptsToLoad.Count > 0) {
 			foreach(string luaScript in LuaScriptsToLoad) {
+				ScriptWindow? existingWnd = DebugWindowManager.GetDebugWindow<ScriptWindow>(wnd => !string.IsNullOrWhiteSpace(wnd.Model.FilePath) && Path.GetFullPath(wnd.Model.FilePath) == Path.GetFullPath(luaScript));
+				if(existingWnd != null) {
+					//Script is already opened, skip it
+					continue;
+				}
+
 				ScriptWindowViewModel model = new();
 				model.LoadScript(luaScript);
 				DebugWindowManager.OpenDebugWindow(() => new ScriptWindow(model));
 			}
+
+			//Shift focus back to main window after opening the script window(s)
+			wnd.BringToFront();
 		}
 
 		if(MovieToRecord != null) {
@@ -185,8 +194,10 @@ public class CommandLineHelper
 		result["Nes"] = GetSwichesForObject("nes.", typeof(NesConfig));
 		result["Snes"] = GetSwichesForObject("snes.", typeof(SnesConfig));
 		result["Game Boy"] = GetSwichesForObject("gameBoy.", typeof(GameboyConfig));
+		result["GBA"] = GetSwichesForObject("gba.", typeof(GbaConfig));
 		result["PC Engine"] = GetSwichesForObject("pcEngine.", typeof(PcEngineConfig));
 		result["SMS"] = GetSwichesForObject("sms.", typeof(SmsConfig));
+		result["WS"] = GetSwichesForObject("ws.", typeof(WsConfig));
 
 		return result;
 	}
@@ -195,6 +206,7 @@ public class CommandLineHelper
 	{
 		StringBuilder sb = new();
 
+#pragma warning disable IL2070 // 'this' argument does not satisfy 'DynamicallyAccessedMembersAttribute' in call to target method. The parameter of method does not have matching annotations.
 		foreach(PropertyInfo info in type.GetProperties()) {
 			if(!info.CanWrite) {
 				continue;
@@ -224,6 +236,7 @@ public class CommandLineHelper
 				}
 			}
 		}
+#pragma warning restore IL2070 // 'this' argument does not satisfy 'DynamicallyAccessedMembersAttribute' in call to target method. The parameter of method does not have matching annotations.
 
 		return sb.ToString();
 	}

@@ -27,6 +27,10 @@ PceConsole::PceConsole(Emulator* emu)
 	_emu = emu;
 }
 
+PceConsole::~PceConsole()
+{
+}
+
 void PceConsole::Reset()
 {
 	//The PC Engine has no reset button, behave like power cycle
@@ -158,6 +162,18 @@ void PceConsole::RunFrame()
 	while(frameCount == _vdc->GetFrameCount()) {
 		_cpu->Exec();
 	}
+	
+	_psg->Run();
+	_psg->PlayQueuedAudio();
+}
+
+void PceConsole::ProcessEndOfFrame()
+{
+	//Run the PSG at least once per frame to prevent issues when a very
+	//large block transfer (TIA, etc.) is running across multiple frames
+	//(RunFrame above can run more than one frame in this scenario, which can cause issues)
+	_psg->Run();
+	_psg->PlayQueuedAudio();
 }
 
 void PceConsole::SaveBattery()
@@ -327,7 +343,7 @@ AddressInfo PceConsole::GetAbsoluteAddress(AddressInfo& relAddress)
 
 AddressInfo PceConsole::GetRelativeAddress(AddressInfo& absAddress, CpuType cpuType)
 {
-	return _memoryManager->GetRelativeAddress(absAddress);
+	return _memoryManager->GetRelativeAddress(absAddress, _cpu->GetState().PC);
 }
 
 PceVideoState PceConsole::GetVideoState()

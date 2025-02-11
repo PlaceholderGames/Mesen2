@@ -31,6 +31,7 @@ class Cx4Debugger final : public IDebugger
 	unique_ptr<Cx4TraceLogger> _traceLogger;
 
 	uint32_t _prevProgramCounter = 0;
+	uint8_t _prevStackPointer = 0;
 	uint8_t _prevOpCode = 0;
 
 public:
@@ -47,7 +48,7 @@ public:
 
 	void SetProgramCounter(uint32_t addr, bool updateDebuggerOnly = false) override;
 	uint32_t GetProgramCounter(bool getInstPc) override;
-	uint64_t GetCpuCycleCount() override;
+	uint64_t GetCpuCycleCount(bool forProfiler) override;
 	DebuggerFeatures GetSupportedFeatures() override;
 
 	BreakpointManager* GetBreakpointManager() override;

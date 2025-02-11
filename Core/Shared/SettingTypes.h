@@ -21,6 +21,7 @@ enum class ScaleFilterType
 	Super2xSai = 4,
 	SuperEagle = 5,
 	Prescale = 6,
+	LcdGrid = 7,
 };
 
 enum class VideoFilterType
@@ -28,6 +29,7 @@ enum class VideoFilterType
 	None = 0,
 	NtscBlargg,
 	NtscBisqwit,
+	LcdGrid,
 	xBRZ2x,
 	xBRZ3x,
 	xBRZ4x,
@@ -89,6 +91,11 @@ struct VideoConfig
 	double Hue = 0;
 	double Saturation = 0;
 	double ScanlineIntensity = 0;
+
+	double LcdGridTopLeftBrightness = 1.0;
+	double LcdGridTopRightBrightness = 1.0;
+	double LcdGridBottomLeftBrightness = 1.0;
+	double LcdGridBottomRightBrightness = 1.0;
 
 	double NtscArtifacts = 0;
 	double NtscBleed = 0;
@@ -212,6 +219,7 @@ enum class ControllerType
 
 	//Game Boy
 	GameboyController,
+	GameboyAccelerometer,
 
 	//PC Engine
 	PceController,
@@ -220,7 +228,15 @@ enum class ControllerType
 
 	//SMS
 	SmsController,
-	SmsLightPhaser
+	SmsLightPhaser,
+	ColecoVisionController,
+
+	//GBA
+	GbaController,
+
+	//WS
+	WsController,
+	WsControllerVertical
 };
 
 struct KeyMapping
@@ -237,6 +253,8 @@ struct KeyMapping
 	uint16_t Right = 0;
 	uint16_t Start = 0;
 	uint16_t Select = 0;
+	uint16_t U = 0;
+	uint16_t D = 0;
 
 	uint16_t TurboA = 0;
 	uint16_t TurboB = 0;
@@ -247,13 +265,13 @@ struct KeyMapping
 	uint16_t TurboSelect = 0;
 	uint16_t TurboStart = 0;
 	
-	uint16_t Microphone = 0;
+	uint16_t GenericKey1 = 0;
 
 	uint16_t CustomKeys[100] = {};
 
 	bool HasKeySet()
 	{
-		if(A || B || X || Y || L || R || Up || Down || Left || Right || Start || Select || TurboA || TurboB || TurboX || TurboY || TurboL || TurboR || TurboStart || TurboSelect || Microphone) {
+		if(A || B || X || Y || L || R || U || D || Up || Down || Left || Right || Start || Select || TurboA || TurboB || TurboX || TurboY || TurboL || TurboR || TurboStart || TurboSelect || GenericKey1) {
 			return true;
 		}
 		for(uint32_t i = 0; i < 100; i++) {
@@ -314,6 +332,8 @@ struct InputConfig
 	InputDisplayPosition DisplayInputPosition = InputDisplayPosition::TopLeft;
 	bool DisplayInputPort[8] = { };
 	bool DisplayInputHorizontally = true;
+
+	double ForceFeedbackIntensity = 1.0;
 };
 
 enum class RamState
@@ -338,7 +358,9 @@ enum class ConsoleType
 	Gameboy = 1,
 	Nes = 2,
 	PcEngine = 3,
-	Sms = 4
+	Sms = 4,
+	Gba = 5,
+	Ws = 6
 };
 
 enum class GameboyModel
@@ -403,6 +425,58 @@ struct GameboyConfig
 	uint32_t WaveVol = 100;
 };
 
+enum class GbaSaveType
+{
+	AutoDetect,
+	None,
+	Sram,
+	EepromUnknown,
+	Eeprom512,
+	Eeprom8192,
+	Flash64,
+	Flash128
+};
+
+enum class GbaRtcType
+{
+	AutoDetect = 0,
+	Enabled = 1,
+	Disabled = 2,
+};
+
+enum class GbaCartridgeType
+{
+	Default,
+	TiltSensor
+};
+
+struct GbaConfig
+{
+	ControllerConfig Controller;
+
+	bool SkipBootScreen = false;
+	bool DisableFrameSkipping = false;
+
+	bool BlendFrames = true;
+	bool GbaAdjustColors = true;
+
+	bool HideBgLayers[4] = {};
+	bool DisableSprites = false;
+
+	RamState RamPowerOnState = RamState::AllZeros;
+	GbaSaveType SaveType = GbaSaveType::AutoDetect;
+	GbaRtcType RtcType = GbaRtcType::AutoDetect;
+	bool AllowInvalidInput = false;
+	bool EnableMgbaLogApi = false;
+
+	uint32_t ChannelAVol = 100;
+	uint32_t ChannelBVol = 100;
+	uint32_t Square1Vol = 100;
+	uint32_t Square2Vol = 100;
+	uint32_t NoiseVol = 100;
+	uint32_t WaveVol = 100;
+};
+
 enum class PceConsoleType
 {
 	Auto,
@@ -423,6 +497,7 @@ struct PcEngineConfig
 	ControllerConfig Port1;
 	ControllerConfig Port1SubPorts[5];
 
+	bool AllowInvalidInput = false;
 	bool PreventSelectRunReset = false;
 
 	PceConsoleType ConsoleType = PceConsoleType::Auto;
@@ -436,6 +511,7 @@ struct PcEngineConfig
 	uint32_t ChannelVol[6] = { 100, 100, 100, 100, 100, 100 };
 	uint32_t CdAudioVolume = 100;
 	uint32_t AdpcmVolume = 100;
+	bool UseHuC6280aAudio = true;
 
 	bool RemoveSpriteLimit = false;
 	bool DisableSprites = false;
@@ -454,6 +530,7 @@ enum class DspInterpolationType
 {
 	Gauss,
 	Cubic,
+	Sinc,
 	None
 };
 
@@ -467,6 +544,7 @@ struct SnesConfig
 
 	ConsoleRegion Region = ConsoleRegion::Auto;
 
+	bool AllowInvalidInput = false;
 	bool BlendHighResolutionModes = false;
 	bool HideBgLayer1 = false;
 	bool HideBgLayer2 = false;
@@ -560,12 +638,15 @@ struct NesConfig
 
 	bool EnableOamDecay = false;
 	bool EnablePpuOamRowCorruption = false;
+	bool EnablePpuSpriteEvalBug = false;
 	bool DisableOamAddrBug = false;
 	bool DisablePaletteRead = false;
 	bool DisablePpu2004Reads = false;
 	bool EnablePpu2000ScrollGlitch = false;
 	bool EnablePpu2006ScrollGlitch = false;
 	bool RestrictPpuAccessOnFirstFrame = false;
+	bool EnableDmcSampleDuplicationGlitch = false;
+	bool EnableCpuTestMode = false;
 
 	bool RandomizeMapperPowerOnState = false;
 	bool RandomizeCpuPpuAlignment = false;
@@ -587,6 +668,7 @@ struct NesConfig
 	uint32_t UserPalette[512] = { };
 
 	uint32_t ChannelVolumes[11] = {};
+	uint32_t EpsmVolume = 100;
 	uint32_t ChannelPanning[11] = {};
 
 	StereoFilterType StereoFilter = StereoFilterType::None;
@@ -614,6 +696,7 @@ struct SmsConfig
 
 	SmsRevision Revision = SmsRevision::Compatibility;
 
+	bool AllowInvalidInput = false;
 	bool UseSgPalette = false;
 	bool GgBlendFrames = true;
 	bool RemoveSpriteLimit = false;
@@ -626,6 +709,61 @@ struct SmsConfig
 
 	OverscanDimensions NtscOverscan = {};
 	OverscanDimensions PalOverscan = {};
+	OverscanDimensions GameGearOverscan = {};
+};
+
+struct CvConfig
+{
+	ControllerConfig Port1;
+	ControllerConfig Port2;
+
+	ConsoleRegion Region = ConsoleRegion::Auto;
+	RamState RamPowerOnState = RamState::Random;
+
+	bool RemoveSpriteLimit = false;
+	bool DisableSprites = false;
+	bool DisableBackground = false;
+
+	uint32_t ChannelVolumes[4] = {};
+};
+
+enum class WsModel : uint8_t
+{
+	Auto,
+	Monochrome,
+	Color,
+	SwanCrystal
+};
+
+enum class WsAudioMode : uint8_t
+{
+	Headphones,
+	Speakers
+};
+
+struct WsConfig
+{
+	ControllerConfig ControllerHorizontal;
+	ControllerConfig ControllerVertical;
+
+	WsModel Model = WsModel::Auto;
+	bool UseBootRom = false;
+
+	bool AutoRotate = false;
+
+	bool BlendFrames = false;
+	bool LcdAdjustColors = false;
+	bool LcdShowIcons = false;
+
+	bool HideBgLayers[2] = {};
+	bool DisableSprites = false;
+
+	WsAudioMode AudioMode = WsAudioMode::Headphones;
+	uint32_t Channel1Vol = 100;
+	uint32_t Channel2Vol = 100;
+	uint32_t Channel3Vol = 100;
+	uint32_t Channel4Vol = 100;
+	uint32_t Channel5Vol = 100;
 };
 
 struct AudioPlayerConfig
@@ -685,6 +823,12 @@ struct DebugConfig
 
 	bool SmsBreakOnNopLoad = false;
 
+	bool GbaBreakOnNopLoad = false;
+	bool GbaBreakOnInvalidOpCode = false;
+	bool GbaBreakOnUnalignedMemAccess = false;
+	
+	bool WsBreakOnInvalidOpCode = false;
+
 	bool ScriptAllowIoOsAccess = false;
 	bool ScriptAllowNetworkAccess = false;
 	uint32_t ScriptTimeout = 1;
@@ -710,7 +854,7 @@ struct PreferencesConfig
 	bool ShowTurboRewindIcons = false;
 	bool DisableGameSelectionScreen = false;
 
-	HudDisplaySize HudSize;
+	HudDisplaySize HudSize = HudDisplaySize::Fixed;
 
 	uint32_t AutoSaveStateDelay = 5;
 	uint32_t RewindBufferSize = 300;
@@ -724,6 +868,12 @@ struct FrameInfo
 {
 	uint32_t Width;
 	uint32_t Height;
+};
+
+struct HudScaleFactors
+{
+	double X;
+	double Y;
 };
 
 enum class EmulatorShortcut
@@ -798,6 +948,9 @@ enum class EmulatorShortcut
 	ToggleAudio,
 	IncreaseVolume,
 	DecreaseVolume,
+
+	PreviousTrack,
+	NextTrack,
 
 	ToggleBgLayer1,
 	ToggleBgLayer2,
@@ -914,8 +1067,11 @@ enum class DebuggerFlags
 	GsuDebuggerEnabled = (1 << 3),
 	NecDspDebuggerEnabled = (1 << 4),
 	Cx4DebuggerEnabled = (1 << 5),
-	GbDebuggerEnabled = (1 << 6),
-	NesDebuggerEnabled = (1 << 7),
-	PceDebuggerEnabled = (1 << 8),
-	SmsDebuggerEnabled = (1 << 9),
+	St018DebuggerEnabled = (1 << 6),
+	GbDebuggerEnabled = (1 << 7),
+	NesDebuggerEnabled = (1 << 8),
+	PceDebuggerEnabled = (1 << 9),
+	SmsDebuggerEnabled = (1 << 10),
+	GbaDebuggerEnabled = (1 << 11),
+	WsDebuggerEnabled = (1 << 12),
 };

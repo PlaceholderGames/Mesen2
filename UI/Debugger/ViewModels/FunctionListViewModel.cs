@@ -21,7 +21,7 @@ using System.Text;
 
 namespace Mesen.Debugger.ViewModels
 {
-	public class FunctionListViewModel : ViewModelBase
+	public class FunctionListViewModel : DisposableViewModel
 	{
 		[Reactive] public MesenList<FunctionViewModel> Functions { get; private set; } = new();
 		[Reactive] public SelectionModel<FunctionViewModel?> Selection { get; set; } = new() { SingleSelect = false };
@@ -68,7 +68,7 @@ namespace Mesen.Debugger.ViewModels
 
 		public void InitContextMenu(Control parent)
 		{
-			DebugShortcutManager.CreateContextMenu(parent, new object[] {
+			AddDisposables(DebugShortcutManager.CreateContextMenu(parent, new object[] {
 				new ContextMenuAction() {
 					ActionType = ActionType.EditLabel,
 					Shortcut = () => ConfigManager.Config.Debug.Shortcuts.Get(DebuggerShortcut.FunctionList_EditLabel),
@@ -134,50 +134,50 @@ namespace Mesen.Debugger.ViewModels
 						}
 					}
 				},
-			});
+			}));
+		}
+	}
+
+	public class FunctionViewModel : INotifyPropertyChanged
+	{
+		private string _format;
+
+		public AddressInfo FuncAddr { get; private set; }
+		public CpuType _cpuType;
+			
+		public string AbsAddressDisplay { get; }
+		public int AbsAddress => FuncAddr.Address;
+		public int RelAddress { get; private set; }
+		public string RelAddressDisplay => RelAddress >= 0 ? ("$" + RelAddress.ToString(_format)) : "<unavailable>";
+		public object RowBrush => RelAddress >= 0 ? AvaloniaProperty.UnsetValue : Brushes.Gray;
+		public FontStyle RowStyle => RelAddress >= 0 ? FontStyle.Normal : FontStyle.Italic;
+
+		public CodeLabel? Label => LabelManager.GetLabel(FuncAddr);
+		public string LabelName => Label?.Label ?? "<no label>";
+
+		public event PropertyChangedEventHandler? PropertyChanged;
+
+		public void Refresh()
+		{
+			int addr = DebugApi.GetRelativeAddress(FuncAddr, _cpuType).Address;
+			if(addr != RelAddress) {
+				RelAddress = addr;
+				PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(RowBrush)));
+				PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(RowStyle)));
+				PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(RelAddressDisplay)));
+			}
+
+			PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(LabelName)));
 		}
 
-		public class FunctionViewModel : INotifyPropertyChanged
+		public FunctionViewModel(AddressInfo funcAddr, CpuType cpuType)
 		{
-			private string _format;
+			FuncAddr = funcAddr;
+			_cpuType = cpuType;
+			RelAddress = DebugApi.GetRelativeAddress(FuncAddr, _cpuType).Address;
+			_format = "X" + cpuType.GetAddressSize();
 
-			public AddressInfo FuncAddr { get; private set; }
-			public CpuType _cpuType;
-			
-			public string AbsAddressDisplay { get; }
-			public int AbsAddress => FuncAddr.Address;
-			public int RelAddress { get; private set; }
-			public string RelAddressDisplay => RelAddress >= 0 ? ("$" + RelAddress.ToString(_format)) : "<unavailable>";
-			public object RowBrush => RelAddress >= 0 ? AvaloniaProperty.UnsetValue : Brushes.Gray;
-			public FontStyle RowStyle => RelAddress >= 0 ? FontStyle.Normal : FontStyle.Italic;
-
-			public CodeLabel? Label => LabelManager.GetLabel(FuncAddr);
-			public string LabelName => Label?.Label ?? "<no label>";
-
-			public event PropertyChangedEventHandler? PropertyChanged;
-
-			public void Refresh()
-			{
-				int addr = DebugApi.GetRelativeAddress(FuncAddr, _cpuType).Address;
-				if(addr != RelAddress) {
-					RelAddress = addr;
-					PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(RowBrush)));
-					PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(RowStyle)));
-					PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(RelAddressDisplay)));
-				}
-
-				PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(LabelName)));
-			}
-
-			public FunctionViewModel(AddressInfo funcAddr, CpuType cpuType)
-			{
-				FuncAddr = funcAddr;
-				_cpuType = cpuType;
-				RelAddress = DebugApi.GetRelativeAddress(FuncAddr, _cpuType).Address;
-				_format = "X" + cpuType.GetAddressSize();
-
-				AbsAddressDisplay = "$" + FuncAddr.Address.ToString(_format);
-			}
+			AbsAddressDisplay = "$" + FuncAddr.Address.ToString(_format);
 		}
 	}
 }

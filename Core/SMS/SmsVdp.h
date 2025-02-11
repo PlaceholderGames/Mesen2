@@ -39,6 +39,11 @@ private:
 	};
 
 	const uint16_t* _activeSgPalette = nullptr;
+	bool _disableBackground = false;
+	bool _disableSprites = false;
+	bool _removeSpriteLimit = false;
+	SmsModel _model = {};
+	SmsRevision _revision = {};
 
 	uint16_t* _outputBuffers[2] = {};
 	uint16_t* _currentOutputBuffer = nullptr;
@@ -80,6 +85,7 @@ private:
 	//Used by SG-1000 modes
 	uint16_t _bgTileIndex = 0;
 	uint8_t _bgPatternData = 0;
+	uint8_t _textModeStep = 0;
 
 	void UpdateIrqState();
 
@@ -94,6 +100,8 @@ private:
 	__forceinline int GetVisiblePixelIndex();
 	__forceinline void LoadBgTilesSms();
 	void LoadBgTilesSg();
+	void LoadBgTilesSgTextMode();
+	__forceinline void PushBgPixel(uint8_t color, int index);
 	__forceinline void DrawPixel();
 	__forceinline void ProcessScanlineEvents();
 	__forceinline uint16_t GetPixelColor();
@@ -111,6 +119,8 @@ private:
 
 	void InitSmsPostBiosState();
 	void InitGgPowerOnState();
+	
+	void UpdateConfig();
 
 public:
 	void Init(Emulator* emu, SmsConsole* console, SmsCpu* cpu, SmsControlManager* controlManager, SmsMemoryManager* memoryManager);
@@ -129,6 +139,7 @@ public:
 
 	void DebugSendFrame();
 	uint16_t GetScanline() { return _state.Scanline; }
+	uint16_t GetScanlineCount() { return _scanlineCount; }
 	uint16_t GetCycle() { return _state.Cycle; }
 	uint16_t GetFrameCount() { return _state.FrameCount; }
 	uint32_t GetPixelBrightness(uint8_t x, uint8_t y);

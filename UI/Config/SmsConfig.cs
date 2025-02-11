@@ -13,8 +13,13 @@ namespace Mesen.Config;
 
 public class SmsConfig : BaseConfig<SmsConfig>
 {
+	[Reactive] public ConsoleOverrideConfig ConfigOverrides { get; set; } = new();
+	[Reactive] public ConsoleOverrideConfig GgConfigOverrides { get; set; } = new();
+
 	[Reactive] public SmsControllerConfig Port1 { get; set; } = new();
 	[Reactive] public SmsControllerConfig Port2 { get; set; } = new();
+
+	[Reactive] public bool AllowInvalidInput { get; set; } = false;
 
 	[ValidValues(ConsoleRegion.Auto, ConsoleRegion.Ntsc, ConsoleRegion.Pal)]
 	[Reactive] public ConsoleRegion Region { get; set; } = ConsoleRegion.Auto;
@@ -41,9 +46,12 @@ public class SmsConfig : BaseConfig<SmsConfig>
 
 	[Reactive] public OverscanConfig NtscOverscan { get; set; } = new() { Top = 24, Bottom = 24 };
 	[Reactive] public OverscanConfig PalOverscan { get; set; } = new() { Top = 24, Bottom = 24 };
+	[Reactive] public OverscanConfig GameGearOverscan { get; set; } = new() { Top = 48, Bottom = 48, Left = 48, Right = 48};
 
 	public void ApplyConfig()
 	{
+		ConfigManager.Config.Video.ApplyConfig();
+
 		ConfigApi.SetSmsConfig(new InteropSmsConfig() {
 			Port1 = Port1.ToInterop(),
 			Port2 = Port2.ToInterop(),
@@ -53,6 +61,7 @@ public class SmsConfig : BaseConfig<SmsConfig>
 			RamPowerOnState = RamPowerOnState,
 			Revision = Revision,
 
+			AllowInvalidInput = this.AllowInvalidInput,
 			UseSgPalette = UseSgPalette,
 			GgBlendFrames = GgBlendFrames,
 			RemoveSpriteLimit = RemoveSpriteLimit,
@@ -68,47 +77,13 @@ public class SmsConfig : BaseConfig<SmsConfig>
 
 			NtscOverscan = NtscOverscan.ToInterop(),
 			PalOverscan = PalOverscan.ToInterop(),
+			GameGearOverscan = GameGearOverscan.ToInterop(),
 		});
 	}
 
 	internal void InitializeDefaults(DefaultKeyMappingType defaultMappings)
 	{
-		List<SmsKeyMapping> mappings = new List<SmsKeyMapping>();
-		if(defaultMappings.HasFlag(DefaultKeyMappingType.Xbox)) {
-			SmsKeyMapping mapping = new();
-			KeyPresets.ApplyXboxLayout(mapping, 0, ControllerType.SmsController);
-			mappings.Add(mapping);
-		}
-		if(defaultMappings.HasFlag(DefaultKeyMappingType.Ps4)) {
-			SmsKeyMapping mapping = new();
-			KeyPresets.ApplyPs4Layout(mapping, 0, ControllerType.SmsController);
-			mappings.Add(mapping);
-		}
-		if(defaultMappings.HasFlag(DefaultKeyMappingType.WasdKeys)) {
-			SmsKeyMapping mapping = new();
-			KeyPresets.ApplyWasdLayout(mapping, ControllerType.SmsController);
-			mappings.Add(mapping);
-		}
-		if(defaultMappings.HasFlag(DefaultKeyMappingType.ArrowKeys)) {
-			SmsKeyMapping mapping = new();
-			KeyPresets.ApplyArrowLayout(mapping, ControllerType.SmsController);
-			mappings.Add(mapping);
-		}
-
-		Port1.Type = ControllerType.SmsController;
-		Port1.TurboSpeed = 2;
-		if(mappings.Count > 0) {
-			Port1.Mapping1 = mappings[0];
-			if(mappings.Count > 1) {
-				Port1.Mapping2 = mappings[1];
-				if(mappings.Count > 2) {
-					Port1.Mapping3 = mappings[2];
-					if(mappings.Count > 3) {
-						Port1.Mapping4 = mappings[3];
-					}
-				}
-			}
-		}
+		Port1.InitDefaults<SmsKeyMapping>(defaultMappings, ControllerType.SmsController);
 	}
 }
 
@@ -123,6 +98,7 @@ public struct InteropSmsConfig
 	public RamState RamPowerOnState;
 	public SmsRevision Revision;
 
+	[MarshalAs(UnmanagedType.I1)] public bool AllowInvalidInput;
 	[MarshalAs(UnmanagedType.I1)] public bool UseSgPalette;
 	[MarshalAs(UnmanagedType.I1)] public bool GgBlendFrames;
 	[MarshalAs(UnmanagedType.I1)] public bool RemoveSpriteLimit;
@@ -138,6 +114,7 @@ public struct InteropSmsConfig
 
 	public InteropOverscanDimensions NtscOverscan;
 	public InteropOverscanDimensions PalOverscan;
+	public InteropOverscanDimensions GameGearOverscan;
 }
 
 public enum SmsRevision

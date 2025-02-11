@@ -6,6 +6,7 @@ using Avalonia.Styling;
 using Avalonia.Input;
 using Mesen.Debugger.Utilities;
 using System.Globalization;
+using Avalonia.Threading;
 
 namespace Mesen.Controls
 {
@@ -60,9 +61,15 @@ namespace Mesen.Controls
 					return;
 				}
 
-				x.SetNewValue(x.Value);
-				x.UpdateText();
-				x.MaxLength = x.GetMaxLength();
+				//This seems to sometimes cause a stack overflow when the code tries to update
+				//value based on the min/max values, which seems to trigger an infinite loop
+				//of value updates (unsure if this is an Avalonia bug?) - updating after the event
+				//prevents the stack overflow/crash.
+				Dispatcher.UIThread.Post(() => {
+					x.SetNewValue(x.Value);
+					x.UpdateText();
+					x.MaxLength = x.GetMaxLength();
+				});
 			});
 
 			MaxProperty.Changed.AddClassHandler<MesenNumericTextBox>((x, e) => {
@@ -95,17 +102,17 @@ namespace Mesen.Controls
 			UpdateText(true);
 		}
 
-		int? GetMin()
+		long? GetMin()
 		{
 			return GetConvertedMinMaxValue(Min);
 		}
 
-		int? GetMax()
+		long? GetMax()
 		{
 			return GetConvertedMinMaxValue(Max);
 		}
 
-		private int? GetConvertedMinMaxValue(string? valStr)
+		private long? GetConvertedMinMaxValue(string? valStr)
 		{
 			if(valStr != null) {
 				NumberStyles styles = NumberStyles.Integer;
@@ -113,7 +120,7 @@ namespace Mesen.Controls
 					valStr = valStr.Substring(2);
 					styles = NumberStyles.HexNumber;
 				}
-				if(int.TryParse(valStr, styles, null, out int val)) {
+				if(long.TryParse(valStr, styles, null, out long val)) {
 					return val;
 				}
 			}
@@ -127,7 +134,7 @@ namespace Mesen.Controls
 				return;
 			}
 
-			int? min = GetMin();
+			long? min = GetMin();
 			bool allowNegative = min != null && min.Value < 0;
 
 			if(Hex) {
@@ -159,11 +166,11 @@ namespace Mesen.Controls
 		private void UpdateValueFromText()
 		{
 			if(string.IsNullOrWhiteSpace(Text)) {
-				int? min = GetMin();
-				if(min != null) {
-					SetNewValue(Math.Min(0, min.Value));
+				long? min = GetMin();
+				if(min != null && min.Value > 0) {
+					SetNewValue((IComparable)Convert.ChangeType(min.Value, Value.GetType()));
 				} else {
-					SetNewValue(0);
+					SetNewValue((IComparable)Convert.ChangeType(0, Value.GetType()));
 				}
 			}
 
@@ -191,7 +198,7 @@ namespace Mesen.Controls
 		private int GetMaxLength()
 		{
 			IFormattable max;
-			int? maxProp = GetMax();
+			long? maxProp = GetMax();
 			if(maxProp != null) {
 				max = maxProp.Value;
 			} else {
@@ -209,7 +216,7 @@ namespace Mesen.Controls
 			}
 
 			//Increase max length by 1 if minus signs are allowed
-			int? min = GetMin();
+			long? min = GetMin();
 			bool allowNegative = !Hex && min != null && min.Value < 0;
 			return max.ToString(Hex ? "X" : null, null).Length + (allowNegative ? 1 : 0);
 		}
@@ -220,15 +227,15 @@ namespace Mesen.Controls
 				return;
 			}
 
-			int? max = GetMax();
-			int? min = GetMin();
+			long? max = GetMax();
+			long? min = GetMin();
 			
 			if(max != null && val.CompareTo(Convert.ChangeType(max, val.GetType())) > 0) {
 				val = (IComparable)Convert.ChangeType(max, val.GetType());
 			} else if(min != null && val.CompareTo(Convert.ChangeType(min, val.GetType())) < 0) {
 				val = (IComparable)Convert.ChangeType(min, val.GetType());
 			} else if(min == null && val.CompareTo(Convert.ChangeType(0, val.GetType())) < 0) {
-				val = 0;
+				val = (IComparable)Convert.ChangeType(0, val.GetType());
 			}
 			if(!object.Equals(Value, val)) {
 				Value = val;

@@ -62,6 +62,7 @@ namespace Mesen.Debugger.ViewModels
 		private PictureViewer _picViewer;
 		private bool _refreshDataOnTabChange;
 		private bool _inGameLoaded;
+		private bool _refreshPending;
 
 		[Obsolete("For designer only")]
 		public TilemapViewerViewModel() : this(CpuType.Snes, new PictureViewer(), null) { }
@@ -133,7 +134,7 @@ namespace Mesen.Debugger.ViewModels
 				return;
 			}
 
-			DebugShortcutManager.CreateContextMenu(picViewer, new List<object>() {
+			AddDisposables(DebugShortcutManager.CreateContextMenu(picViewer, new List<object>() {
 				new ContextMenuAction() {
 					ActionType = ActionType.ViewInMemoryViewer,
 					HintText = () => {
@@ -167,26 +168,11 @@ namespace Mesen.Debugger.ViewModels
 				new ContextMenuAction() {
 					ActionType = ActionType.EditTiles,
 					SubActions = new() {
-						new ContextMenuAction() {
-							ActionType = ActionType.Custom,
-							CustomText = $"1x2 ({GridSizeX}px x {GridSizeY*2}px)",
-							OnClick = () => EditTileGrid(1, 2, wnd)
-						},
-						new ContextMenuAction() {
-							ActionType = ActionType.Custom,
-							CustomText = $"2x1 ({GridSizeX*2}px x {GridSizeY}px)",
-							OnClick = () => EditTileGrid(2, 1, wnd)
-						},
-						new ContextMenuAction() {
-							ActionType = ActionType.Custom,
-							CustomText = $"2x2 ({GridSizeX*2}px x {GridSizeY*2}px)",
-							OnClick = () => EditTileGrid(2, 2, wnd)
-						},
-						new ContextMenuAction() {
-							ActionType = ActionType.Custom,
-							CustomText = $"4x4 ({GridSizeX*4}px x {GridSizeY*4}px)",
-							OnClick = () => EditTileGrid(4, 4, wnd)
-						}
+						GetEditTileAction(1, 2, wnd),
+						GetEditTileAction(2, 1, wnd),
+						GetEditTileAction(2, 2, wnd),
+						GetEditTileAction(4, 4, wnd),
+						GetEditTileAction(8, 8, wnd)
 					}
 				},
 				new ContextMenuSeparator(),
@@ -231,7 +217,7 @@ namespace Mesen.Debugger.ViewModels
 						}
 					}
 				}
-			});
+			}));
 
 			AddDisposable(this.WhenAnyValue(x => x.Tabs).Subscribe(x => ShowTabs = x.Count > 1));
 			AddDisposable(this.WhenAnyValue(x => x.SelectedTab).Subscribe(x => {
@@ -332,6 +318,19 @@ namespace Mesen.Debugger.ViewModels
 					break;
 
 				case CpuType.Nes:
+					FrameInfo size = DebugApi.GetTilemapSize(CpuType.Nes, new GetTilemapOptions() { Layer = 1 }, new NesPpuState());
+					if(size.Width != 0 && size.Height != 0) {
+						Tabs = new List<TilemapViewerTab>() {
+							new() { Title = "Nametables", Layer = 0 },
+							new() { Title = "Window", Layer = 1 }
+						};
+					} else {
+						Tabs = new List<TilemapViewerTab>() {
+							new() { Title = "", Layer = 0 }
+						};
+					}
+					break;
+
 				case CpuType.Sms:
 					Tabs = new List<TilemapViewerTab>() {
 						new() { Title = "", Layer = 0 }
@@ -358,12 +357,33 @@ namespace Mesen.Debugger.ViewModels
 						new() { Title = "$9C00", Layer = 1 }
 					};
 					break;
+
+				case CpuType.Gba: {
+					Tabs = new() {
+						new() { Title = "BG0", Layer = 0 },
+						new() { Title = "BG1", Layer = 1 },
+						new() { Title = "BG2", Layer = 2 },
+						new() { Title = "BG3", Layer = 3 },
+						new() { Title = "Mem Access", Layer = 4 }
+					};
+					break;
+				}
+
+				case CpuType.Ws:
+					Tabs = new() {
+						new() { Title = "BG0", Layer = 0 },
+						new() { Title = "BG1", Layer = 1 }
+					};
+					break;
+
+				default:
+					throw new Exception("unsupported cpu type");
 			}
 		}
 
 		private DebugTilemapTileInfo? GetSelectedTileInfo()
 		{
-			if(_data.PpuState == null || _data.Vram == null) {
+			if(_data.PpuState == null || _data.PpuToolsState == null || _data.Vram == null) {
 				return null;
 			} else {
 				PixelPoint p;
@@ -375,7 +395,7 @@ namespace Mesen.Debugger.ViewModels
 					}
 					p = PixelPoint.FromPoint(SelectionRect.TopLeft, 1);
 				}
-				return DebugApi.GetTilemapTileInfo((uint)p.X, (uint)p.Y, CpuType, GetOptions(SelectedTab), _data.Vram, _data.PpuState);
+				return DebugApi.GetTilemapTileInfo((uint)p.X, (uint)p.Y, CpuType, GetOptions(SelectedTab), _data.Vram, _data.PpuState, _data.PpuToolsState);
 			}
 		}
 
@@ -445,70 +465,93 @@ namespace Mesen.Debugger.ViewModels
 
 		private void RefreshTab()
 		{
+			if(_refreshPending) {
+				return;
+			}
+
+			_refreshPending = true;
 			Dispatcher.UIThread.Post(() => {
-				lock(_updateLock) {
-					_coreData.CopyTo(_data);
-				}
-
-				if(_data.PpuState == null) {
-					return;
-				}
-
-				GetTilemapOptions options;
-				FrameInfo size;
-
-				foreach(TilemapViewerTab tab in Tabs) {
-					options = GetOptions(tab);
-					size = DebugApi.GetTilemapSize(CpuType, options, _data.PpuState);
-					tab.Enabled = size.Width != 0 && size.Height != 0;
-				}
-
-				if(!SelectedTab.Enabled) {
-					SelectedTab = Tabs[0];
-				}
-
-				options = GetOptions(SelectedTab, _data.PrevVram, _data.AccessCounters);
-				options.MasterClock = Interlocked.Read(ref _data.MasterClock);
-
-				size = DebugApi.GetTilemapSize(CpuType, options, _data.PpuState);
-				InitBitmap((int)size.Width, (int)size.Height);
-
-				using(var framebuffer = ViewerBitmap.Lock()) {
-					_data.TilemapInfo = DebugApi.GetTilemap(CpuType, options, _data.PpuState, _data.Vram, _data.RgbPalette, framebuffer.FrameBuffer.Address);
-				}
-
-				if(_data.TilemapInfo.Bpp == 0) {
-					GridSizeX = 8;
-					GridSizeY = 8;
-					ScrollOverlayRect = default;
-					OverlayLines = null;
-					PreviewPanel = null;
-					IsTilemapInfoVisible = false;
-					return;
-				}
-
-				IsTilemapInfoVisible = true;
-
-				GridSizeX = (int)_data.TilemapInfo.TileWidth;
-				GridSizeY = (int)_data.TilemapInfo.TileHeight;
-
-				UpdatePreviewPanel();
-				UpdateTilemapInfo();
-
-				if(Config.ShowScrollOverlay) {
-					ScrollOverlayRect = new Rect(
-						_data.TilemapInfo.ScrollX % size.Width,
-						_data.TilemapInfo.ScrollY % size.Height,
-						_data.TilemapInfo.ScrollWidth,
-						_data.TilemapInfo.ScrollHeight
-					);
-
-					DrawMode7Overlay();
-				} else {
-					ScrollOverlayRect = default;
-					OverlayLines = null;
-				}
+				InternalRefreshTab();
+				_refreshPending = false;
 			});
+		}
+
+		private void InternalRefreshTab()
+		{
+			if(Disposed) {
+				return;
+			}
+
+			lock(_updateLock) {
+				_coreData.CopyTo(_data);
+			}
+
+			if(_data.PpuState == null || _data.PpuToolsState == null) {
+				_refreshPending = false;
+				return;
+			}
+
+			GetTilemapOptions options;
+			FrameInfo size;
+
+			foreach(TilemapViewerTab tab in Tabs) {
+				options = GetOptions(tab);
+				size = DebugApi.GetTilemapSize(CpuType, options, _data.PpuState);
+				tab.Enabled = size.Width != 0 && size.Height != 0;
+			}
+
+			if(!SelectedTab.Enabled) {
+				foreach(TilemapViewerTab tab in Tabs) {
+					if(tab.Enabled) {
+						SelectedTab = tab;
+						break;
+					}
+				}
+			}
+
+			options = GetOptions(SelectedTab, _data.PrevVram, _data.AccessCounters);
+			options.MasterClock = Interlocked.Read(ref _data.MasterClock);
+
+			size = DebugApi.GetTilemapSize(CpuType, options, _data.PpuState);
+			InitBitmap((int)size.Width, (int)size.Height);
+
+			using(var framebuffer = ViewerBitmap.Lock()) {
+				_data.TilemapInfo = DebugApi.GetTilemap(CpuType, options, _data.PpuState, _data.PpuToolsState, _data.Vram, _data.RgbPalette, framebuffer.FrameBuffer.Address);
+			}
+
+			if(_data.TilemapInfo.Bpp == 0) {
+				GridSizeX = 8;
+				GridSizeY = 8;
+				ScrollOverlayRect = default;
+				OverlayLines = null;
+				PreviewPanel = null;
+				IsTilemapInfoVisible = false;
+				return;
+			}
+
+			IsTilemapInfoVisible = true;
+
+			GridSizeX = (int)_data.TilemapInfo.TileWidth;
+			GridSizeY = (int)_data.TilemapInfo.TileHeight;
+
+			UpdatePreviewPanel();
+			UpdateTilemapInfo();
+
+			if(Config.ShowScrollOverlay) {
+				ScrollOverlayRect = new Rect(
+					_data.TilemapInfo.ScrollX % size.Width,
+					_data.TilemapInfo.ScrollY % size.Height,
+					_data.TilemapInfo.ScrollWidth,
+					_data.TilemapInfo.ScrollHeight
+				);
+
+				DrawMode7Overlay();
+			} else {
+				ScrollOverlayRect = default;
+				OverlayLines = null;
+			}
+
+			_refreshPending = false;
 		}
 
 		private void UpdateTilemapInfo()
@@ -524,17 +567,20 @@ namespace Mesen.Debugger.ViewModels
 			if(info.Mirroring != TilemapMirroring.None) {
 				entries.AddEntry("Mirroring", info.Mirroring);
 			}
+			if(info.Priority >= 0) {
+				entries.AddEntry("Priority", info.Priority);
+			}
 			entries.EndUpdate();
 			TilemapInfoPanel.Items = entries;
 		}
 
 		public DynamicTooltip? GetPreviewPanel(PixelPoint p, DynamicTooltip? tooltipToUpdate)
 		{
-			if(_data.PpuState == null) {
+			if(_data.PpuState == null || _data.PpuToolsState == null) {
 				return null;
 			}
 
-			DebugTilemapTileInfo? result = DebugApi.GetTilemapTileInfo((uint)p.X, (uint)p.Y, CpuType, GetOptions(SelectedTab), _data.Vram, _data.PpuState);
+			DebugTilemapTileInfo? result = DebugApi.GetTilemapTileInfo((uint)p.X, (uint)p.Y, CpuType, GetOptions(SelectedTab), _data.Vram, _data.PpuState, _data.PpuToolsState);
 			if(result == null) {
 				return null;
 			}
@@ -546,7 +592,11 @@ namespace Mesen.Debugger.ViewModels
 
 			entries.StartUpdate();
 
-			entries.AddPicture("Tile", ViewerBitmap, 6, cropRect);
+			if(tileInfo.Width == 1 && tileInfo.Height == 1) {
+				entries.AddPicture("Tile", ViewerBitmap, 32, cropRect);
+			} else {
+				entries.AddPicture("Tile", ViewerBitmap, 6, cropRect);
+			}
 
 			if(_data.TilemapInfo.Bpp >= 2 && _data.TilemapInfo.Bpp <= 4) {
 				int paletteSize = (int)Math.Pow(2, _data.TilemapInfo.Bpp);
@@ -554,13 +604,18 @@ namespace Mesen.Debugger.ViewModels
 				entries.AddEntry("Palette", new TooltipPaletteEntry(paletteIndex, paletteSize, _data.RgbPalette, _data.RawPalette, _data.RawFormat));
 			}
 
-			entries.AddEntry("Column, Row", $"{tileInfo.Column}, {tileInfo.Row}");
+			if(tileInfo.Width != 1 || tileInfo.Height != 1) {
+				entries.AddEntry("Column, Row", $"{tileInfo.Column}, {tileInfo.Row}");
+			}
 			entries.AddEntry("X, Y", $"{tileInfo.Column*tileInfo.Width}, {tileInfo.Row*tileInfo.Height}");
 			entries.AddEntry("Size", tileInfo.Width + "x" + tileInfo.Height);
 
 			if(tileInfo.TileMapAddress >= 0) {
 				entries.AddEntry("Tilemap address", FormatAddress(tileInfo.TileMapAddress));
 			}
+
+			entries.AddSeparator("TileSeparator");
+
 			if(tileInfo.TileIndex >= 0) {
 				entries.AddEntry("Tile index", "$" + tileInfo.TileIndex.ToString("X2"));
 			}
@@ -577,27 +632,37 @@ namespace Mesen.Debugger.ViewModels
 					entries.AddEntry("Tile address", FormatAddress(tileInfo.TileAddress));
 				}
 			}
+
+			entries.AddSeparator("PaletteSeparator");
+
 			if(tileInfo.PaletteIndex >= 0) {
-				entries.AddEntry("Palette index", tileInfo.PaletteIndex.ToString());
+				if(tileInfo.BasePaletteIndex >= 0) {
+					entries.AddEntry("Palette index", $"{tileInfo.BasePaletteIndex} ({tileInfo.PaletteIndex})");
+				} else {
+					entries.AddEntry("Palette index", tileInfo.PaletteIndex.ToString());
+				}
 			}
 			if(tileInfo.PaletteAddress >= 0) {
 				entries.AddEntry("Palette address", "$" + tileInfo.PaletteAddress.ToString("X2"));
 			}
+
+			entries.AddSeparator("AttributeSeparator");
+
 			if(tileInfo.AttributeAddress >= 0) {
 				entries.AddEntry("Attribute address", "$" + tileInfo.AttributeAddress.ToString("X4"));
 			}
 			if(tileInfo.AttributeData >= 0) {
 				entries.AddEntry("Attribute data", "$" + tileInfo.AttributeData.ToString("X2"));
 			}
-			if(tileInfo.HorizontalMirroring != NullableBoolean.Undefined) {
-				entries.AddEntry("Horizontal mirror", tileInfo.HorizontalMirroring == NullableBoolean.True);
+
+			entries.AddSeparator("MiscSeparator");
+
+			if(tileInfo.PixelData >= 0) {
+				entries.AddEntry("Pixel data", "$" + tileInfo.PixelData.ToString("X2"));
 			}
-			if(tileInfo.VerticalMirroring != NullableBoolean.Undefined) {
-				entries.AddEntry("Vertical mirror", tileInfo.VerticalMirroring == NullableBoolean.True);
-			}
-			if(tileInfo.HighPriority != NullableBoolean.Undefined) {
-				entries.AddEntry("High priority", tileInfo.HighPriority == NullableBoolean.True);
-			}
+			entries.AddEntry("Horizontal mirror", tileInfo.HorizontalMirroring);
+			entries.AddEntry("Vertical mirror", tileInfo.VerticalMirroring);
+			entries.AddEntry("High priority", tileInfo.HighPriority);
 
 			entries.EndUpdate();
 
@@ -617,9 +682,18 @@ namespace Mesen.Debugger.ViewModels
 			}
 		}
 
+		private ContextMenuAction GetEditTileAction(int columnCount, int rowCount, Window wnd)
+		{
+			return new ContextMenuAction() {
+				ActionType = ActionType.Custom,
+				CustomText = $"{columnCount}x{rowCount} ({GridSizeX * columnCount}px x {GridSizeY * rowCount}px)",
+				OnClick = () => EditTileGrid(columnCount, rowCount, wnd)
+			};
+		}
+
 		private void EditTileGrid(int columnCount, int rowCount, Window wnd)
 		{
-			if(_data.PpuState == null) {
+			if(_data.PpuState == null || _data.PpuToolsState == null) {
 				return;
 			}
 
@@ -629,9 +703,15 @@ namespace Mesen.Debugger.ViewModels
 			int palette = -1;
 			for(int row = 0; row < rowCount; row++) {
 				for(int col = 0; col < columnCount; col++) {
-					DebugTilemapTileInfo? tile = DebugApi.GetTilemapTileInfo((uint)(p.X + GridSizeX*col), (uint)(p.Y + GridSizeY*row), CpuType, GetOptions(SelectedTab), _data.Vram, _data.PpuState);
+					DebugTilemapTileInfo? tile = DebugApi.GetTilemapTileInfo((uint)(p.X + GridSizeX*col), (uint)(p.Y + GridSizeY*row), CpuType, GetOptions(SelectedTab), _data.Vram, _data.PpuState, _data.PpuToolsState);
 					if(tile == null) {
-						return;
+						if(col == 0) {
+							rowCount = row;
+							break;
+						} else {
+							columnCount = col;
+							continue;
+						}
 					}
 
 					if(palette == -1) {
@@ -640,8 +720,22 @@ namespace Mesen.Debugger.ViewModels
 					addresses.Add(new AddressInfo() { Address = tile.Value.TileAddress, Type = memType });
 				}
 			}
+
+			if(rowCount <= 0 || columnCount <= 0) {
+				return;
+			}
+
 			palette = Math.Max(0, palette);
-			TileEditorWindow.OpenAtTile(addresses, columnCount, _data.TilemapInfo.Format, palette, wnd);
+			TileEditorWindow.OpenAtTile(
+				addresses,
+				columnCount,
+				_data.TilemapInfo.Format,
+				palette,
+				wnd,
+				CpuType,
+				RefreshTiming.Config.RefreshScanline,
+				RefreshTiming.Config.RefreshCycle
+			);
 		}
 
 		private void DrawMode7Overlay()

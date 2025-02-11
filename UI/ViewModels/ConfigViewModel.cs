@@ -18,8 +18,11 @@ namespace Mesen.ViewModels
 		[Reactive] public SnesConfigViewModel? Snes { get; set; }
 		[Reactive] public NesConfigViewModel? Nes { get; set; }
 		[Reactive] public GameboyConfigViewModel? Gameboy { get; set; }
+		[Reactive] public GbaConfigViewModel? Gba { get; set; }
 		[Reactive] public PceConfigViewModel? PcEngine { get; set; }
 		[Reactive] public SmsConfigViewModel? Sms { get; set; }
+		[Reactive] public WsConfigViewModel? Ws { get; set; }
+		[Reactive] public OtherConsolesConfigViewModel? OtherConsoles { get; set; }
 
 		[Reactive] public ConfigWindowTab SelectedIndex { get; set; }
 		public bool AlwaysOnTop { get; }
@@ -54,8 +57,11 @@ namespace Mesen.ViewModels
 
 				case ConfigWindowTab.Snes: Snes ??= AddDisposable(new SnesConfigViewModel()); break;
 				case ConfigWindowTab.Gameboy: Gameboy ??= AddDisposable(new GameboyConfigViewModel()); break;
+				case ConfigWindowTab.Gba: Gba ??= AddDisposable(new GbaConfigViewModel()); break;
 				case ConfigWindowTab.PcEngine: PcEngine ??= AddDisposable(new PceConfigViewModel()); break;
 				case ConfigWindowTab.Sms: Sms ??= AddDisposable(new SmsConfigViewModel()); break;
+				case ConfigWindowTab.Ws: Ws ??= AddDisposable(new WsConfigViewModel()); break;
+				case ConfigWindowTab.OtherConsoles: OtherConsoles ??= AddDisposable(new OtherConsolesConfigViewModel()); break;
 
 				case ConfigWindowTab.Preferences: Preferences ??= AddDisposable(new PreferencesConfigViewModel()); break;
 			}
@@ -80,8 +86,10 @@ namespace Mesen.ViewModels
 			ConfigManager.Config.Nes = Nes?.OriginalConfig ?? ConfigManager.Config.Nes;
 			ConfigManager.Config.Snes = Snes?.OriginalConfig ?? ConfigManager.Config.Snes;
 			ConfigManager.Config.Gameboy = Gameboy?.OriginalConfig ?? ConfigManager.Config.Gameboy;
+			ConfigManager.Config.Gba = Gba?.OriginalConfig ?? ConfigManager.Config.Gba;
 			ConfigManager.Config.PcEngine = PcEngine?.OriginalConfig ?? ConfigManager.Config.PcEngine;
 			ConfigManager.Config.Sms = Sms?.OriginalConfig ?? ConfigManager.Config.Sms;
+			ConfigManager.Config.Cv = OtherConsoles?.CvOriginalConfig ?? ConfigManager.Config.Cv;
 			ConfigManager.Config.ApplyConfig();
 			ConfigManager.Config.Save();
 		}
@@ -97,8 +105,11 @@ namespace Mesen.ViewModels
 				Nes?.OriginalConfig.IsIdentical(ConfigManager.Config.Nes) == false ||
 				Snes?.OriginalConfig.IsIdentical(ConfigManager.Config.Snes) == false ||
 				Gameboy?.OriginalConfig.IsIdentical(ConfigManager.Config.Gameboy) == false ||
+				Gba?.OriginalConfig.IsIdentical(ConfigManager.Config.Gba) == false ||
 				PcEngine?.OriginalConfig.IsIdentical(ConfigManager.Config.PcEngine) == false ||
-				Sms?.OriginalConfig.IsIdentical(ConfigManager.Config.Sms) == false
+				Sms?.OriginalConfig.IsIdentical(ConfigManager.Config.Sms) == false ||
+				Ws?.OriginalConfig.IsIdentical(ConfigManager.Config.Ws) == false ||
+				OtherConsoles?.CvOriginalConfig.IsIdentical(ConfigManager.Config.Cv) == false
 			);
 		}
    }
@@ -113,9 +124,12 @@ namespace Mesen.ViewModels
 		Nes = 5,
 		Snes = 6,
 		Gameboy = 7,
-		PcEngine = 8,
-		Sms = 9,
+		Gba = 8,
+		PcEngine = 9,
+		Sms = 10,
+		Ws = 11,
+		OtherConsoles = 12,
 		//separator
-		Preferences = 11
+		Preferences = 14
 	}
 }

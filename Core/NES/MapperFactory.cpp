@@ -22,6 +22,7 @@
 #include "NES/Mappers/Homebrew/Cheapocabra.h"
 #include "NES/Mappers/Homebrew/FaridSlrom.h"
 #include "NES/Mappers/Homebrew/FaridUnrom.h"
+#include "NES/Mappers/Homebrew/Rainbow.h"
 #include "NES/Mappers/Homebrew/SealieComputing.h"
 #include "NES/Mappers/Homebrew/UnRom512.h"
 #include "NES/Mappers/Homebrew/UnlDripGame.h"
@@ -320,6 +321,8 @@ BaseMapper* MapperFactory::GetMapperFromID(RomData &romData)
 				case 1: return new Nina01();
 				case 2: return new BnRom();
 			}
+			break;
+
 		case 35: return new Mapper35();
 		case 36: return new Txc22000();
 		case 37: return new MMC3_37();
@@ -485,7 +488,6 @@ BaseMapper* MapperFactory::GetMapperFromID(RomData &romData)
 		case 217: return new MMC3_217();
 		case 218: return new MagicFloor218();
 		case 219: return new MMC3_219();
-		case 220: return new Kaiser7057();
 		case 221: return new Mapper221();
 		case 222: return new Mapper222();
 		case 224: return new MMC3_224();
@@ -614,6 +616,8 @@ BaseMapper* MapperFactory::GetMapperFromID(RomData &romData)
 		case 528: break; //831128C
 		case 529: return new T230();
 		case 530: return new Ax5705();
+		
+		case 682: return new Rainbow();
 
 		case UnifBoards::Ac08: return new Ac08(); //mapper 42?
 		case UnifBoards::Cc21: return new Cc21();

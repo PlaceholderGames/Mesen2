@@ -5,6 +5,7 @@
 #include "PCE/PceVce.h"
 #include "PCE/PceTimer.h"
 #include "PCE/PcePsg.h"
+#include "PCE/PceCpu.h"
 #include "PCE/PceControlManager.h"
 #include "PCE/CdRom/PceCdRom.h"
 #include "Shared/MessageManager.h"
@@ -173,8 +174,8 @@ void PceMemoryManager::UpdateExecCallback()
 		}
 	}
 
+	_fastExec = _exec;
 	if(!_state.FastCpuSpeed) {
-		_fastExec = _exec;
 		_exec = &PceMemoryManager::ExecSlow;
 	}
 }
@@ -268,12 +269,12 @@ uint8_t PceMemoryManager::ReadRegister(uint16_t addr)
 void PceMemoryManager::WriteRegister(uint16_t addr, uint8_t value)
 {
 	if(addr <= 0x3FF) {
+		_console->GetCpu()->RunIdleCpuCycle(); //CPU is delayed by 1 CPU cycle when reading/writing to VDC/VCE
 		_vpc->Write(addr, value);
-		Exec(); //CPU is delayed by 1 CPU cycle when reading/writing to VDC/VCE
 	} else if(addr <= 0x7FF) {
+		_console->GetCpu()->RunIdleCpuCycle(); //CPU is delayed by 1 CPU cycle when reading/writing to VDC/VCE
 		_vpc->DrawScanline();
 		_vce->Write(addr, value);
-		Exec(); //CPU is delayed by 1 CPU cycle when reading/writing to VDC/VCE
 	} else if(addr <= 0xBFF) {
 		//PSG
 		_psg->Write(addr, value);
@@ -310,8 +311,8 @@ void PceMemoryManager::WriteRegister(uint16_t addr, uint8_t value)
 void PceMemoryManager::WriteVdc(uint16_t addr, uint8_t value)
 {
 	if(_emu->ProcessMemoryWrite<CpuType::Pce>(addr, value, MemoryOperationType::Write)) {
+		_console->GetCpu()->RunIdleCpuCycle(); //CPU is delayed by 1 CPU cycle when reading/writing to VDC/VCE
 		_vpc->StVdcWrite(addr, value);
-		Exec(); //CPU is delayed by 1 CPU cycle when reading/writing to VDC/VCE
 	}
 }
 
@@ -333,7 +334,13 @@ uint8_t PceMemoryManager::DebugRead(uint16_t addr)
 void PceMemoryManager::DebugWrite(uint16_t addr, uint8_t value)
 {
 	uint8_t bank = _state.Mpr[(addr & 0xE000) >> 13];
-	if(bank != 0xFF) {
+	if(bank == 0xF7) {
+		if(_writeBanks[0xF7] && (addr & 0x1FFF) <= 0x7FF) {
+			//Only allow writes to the first 2kb - save RAM is not mirrored
+			//"Death Bringer" breaks if save RAM is mirrored.
+			_writeBanks[0xF7][addr & 0x7FF] = value;
+		}
+	} else if(bank != 0xFF) {
 		uint8_t* data = _writeBanks[bank];
 		if(data) {
 			data[addr & 0x1FFF] = value;
@@ -384,7 +391,14 @@ AddressInfo PceMemoryManager::GetAbsoluteAddress(uint32_t relAddr)
 	switch(_bankMemType[bank]) {
 		case MemoryType::PcePrgRom: absAddr = (uint32_t)(_readBanks[bank] - _prgRom) + (relAddr & 0x1FFF); break;
 		case MemoryType::PceWorkRam: absAddr = (uint32_t)(_readBanks[bank] - _workRam) + (relAddr & 0x1FFF); break;
-		case MemoryType::PceSaveRam: absAddr = (uint32_t)(_readBanks[bank] - _saveRam) + (relAddr & 0x1FFF); break;
+		case MemoryType::PceSaveRam:
+			if((relAddr & 0x1FFF) <= 0x7FF) {
+				absAddr = (uint32_t)(_readBanks[bank] - _saveRam) + (relAddr & 0x7FF);
+			} else {
+				//Unmapped past the first 2kb
+				return { -1, MemoryType::None };
+			}
+			break;
 		case MemoryType::PceCdromRam: absAddr = (uint32_t)(_readBanks[bank] - _cdromRam) + (relAddr & 0x1FFF); break;
 		case MemoryType::PceCardRam: absAddr = (uint32_t)(_readBanks[bank] - _cardRam) + (relAddr & 0x1FFF); break;
 		default: return { -1, MemoryType::None };
@@ -392,12 +406,23 @@ AddressInfo PceMemoryManager::GetAbsoluteAddress(uint32_t relAddr)
 	return { (int32_t)absAddr, _bankMemType[bank] };
 }
 
-AddressInfo PceMemoryManager::GetRelativeAddress(AddressInfo absAddr)
+AddressInfo PceMemoryManager::GetRelativeAddress(AddressInfo absAddr, uint16_t pc)
 {
+	//Start with the bank that the CPU is executing from
+	//This is to favor any mirror that exists in the current bank
+	//instead of always picking the first mirror, when mirrors exist.
+	int startBank = pc >> 13;
+
 	for(int i = 0; i < 8; i++) {
-		AddressInfo bankStart = GetAbsoluteAddress(i * 0x2000);
+		int bank = (startBank + i) & 0x07;
+		AddressInfo bankStart = GetAbsoluteAddress(bank * 0x2000);
 		if(bankStart.Type == absAddr.Type && bankStart.Address == (absAddr.Address & ~0x1FFF)) {
-			return { (i << 13) | (absAddr.Address & 0x1FFF), MemoryType::PceMemory };
+			if(bankStart.Type == MemoryType::PceSaveRam && (absAddr.Address & 0x1FFF) >= 0x800) {
+				//unmapped
+				break;
+			}
+
+			return { (bank << 13) | (absAddr.Address & 0x1FFF), MemoryType::PceMemory };
 		}
 	}
 

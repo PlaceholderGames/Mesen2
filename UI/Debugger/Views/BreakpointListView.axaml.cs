@@ -50,11 +50,14 @@ namespace Mesen.Debugger.Views
 							if(isEnabledColumn) {
 								bp.Breakpoint.Enabled = newValue;
 							} else {
-								bp.Breakpoint.MarkEvent = newValue;
+								if(!bp.Breakpoint.Forbid) {
+									bp.Breakpoint.MarkEvent = newValue;
+								}
 							}
 						}
 					}
 
+					DebugWorkspaceManager.AutoSave();
 					BreakpointManager.RefreshBreakpoints();
 				}
 			}

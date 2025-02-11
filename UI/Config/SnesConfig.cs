@@ -11,6 +11,8 @@ namespace Mesen.Config
 {
 	public class SnesConfig : BaseConfig<SnesConfig>
 	{
+		[Reactive] public ConsoleOverrideConfig ConfigOverrides { get; set; } = new();
+
 		//Input
 		[Reactive] public SnesControllerConfig Port1 { get; set; } = new SnesControllerConfig();
 		[Reactive] public SnesControllerConfig Port2 { get; set; } = new SnesControllerConfig();
@@ -24,6 +26,8 @@ namespace Mesen.Config
 		[Reactive] public SnesControllerConfig Port2B { get; set; } = new SnesControllerConfig();
 		[Reactive] public SnesControllerConfig Port2C { get; set; } = new SnesControllerConfig();
 		[Reactive] public SnesControllerConfig Port2D { get; set; } = new SnesControllerConfig();
+
+		[Reactive] public bool AllowInvalidInput { get; set; } = false;
 
 		[ValidValues(ConsoleRegion.Auto, ConsoleRegion.Ntsc, ConsoleRegion.Pal)]
 		[Reactive] public ConsoleRegion Region { get; set; } = ConsoleRegion.Auto;
@@ -69,6 +73,8 @@ namespace Mesen.Config
 
 		public void ApplyConfig()
 		{
+			ConfigManager.Config.Video.ApplyConfig();
+
 			ConfigApi.SetSnesConfig(new InteropSnesConfig() {
 				Port1 = Port1.ToInterop(),
 				Port1A = Port1A.ToInterop(),
@@ -83,6 +89,8 @@ namespace Mesen.Config
 				Port2D = Port2D.ToInterop(),
 
 				Region = this.Region,
+
+				AllowInvalidInput = this.AllowInvalidInput,
 
 				BlendHighResolutionModes = this.BlendHighResolutionModes,
 				HideBgLayer1 = this.HideBgLayer1,
@@ -114,48 +122,13 @@ namespace Mesen.Config
 				GsuClockSpeed = this.GsuClockSpeed,
 				RamPowerOnState = this.RamPowerOnState,
 				SpcClockSpeedAdjustment = this.SpcClockSpeedAdjustment,
-				BsxCustomDate = this.BsxCustomDate.Ticks + this.BsxCustomTime.Ticks
+				BsxCustomDate = BsxUseCustomTime ? (this.BsxCustomDate.ToUnixTimeSeconds() + (long)this.BsxCustomTime.TotalSeconds) : -1
 			});
 		}
 
 		public void InitializeDefaults(DefaultKeyMappingType defaultMappings)
 		{
-			List<SnesKeyMapping> mappings = new List<SnesKeyMapping>();
-			if(defaultMappings.HasFlag(DefaultKeyMappingType.Xbox)) {
-				SnesKeyMapping mapping = new();
-				KeyPresets.ApplyXboxLayout(mapping, 0, ControllerType.SnesController);
-				mappings.Add(mapping);
-			}
-			if(defaultMappings.HasFlag(DefaultKeyMappingType.Ps4)) {
-				SnesKeyMapping mapping = new();
-				KeyPresets.ApplyPs4Layout(mapping, 0, ControllerType.SnesController);
-				mappings.Add(mapping);
-			}
-			if(defaultMappings.HasFlag(DefaultKeyMappingType.WasdKeys)) {
-				SnesKeyMapping mapping = new();
-				KeyPresets.ApplyWasdLayout(mapping, ControllerType.SnesController);
-				mappings.Add(mapping);
-			}
-			if(defaultMappings.HasFlag(DefaultKeyMappingType.ArrowKeys)) {
-				SnesKeyMapping mapping = new();
-				KeyPresets.ApplyArrowLayout(mapping, ControllerType.SnesController);
-				mappings.Add(mapping);
-			}
-
-			Port1.Type = ControllerType.SnesController;
-			Port1.TurboSpeed = 2;
-			if(mappings.Count > 0) {
-				Port1.Mapping1 = mappings[0];
-				if(mappings.Count > 1) {
-					Port1.Mapping2 = mappings[1];
-					if(mappings.Count > 2) {
-						Port1.Mapping3 = mappings[2];
-						if(mappings.Count > 3) {
-							Port1.Mapping4 = mappings[3];
-						}
-					}
-				}
-			}
+			Port1.InitDefaults<SnesKeyMapping>(defaultMappings, ControllerType.SnesController);
 		}
 	}
 
@@ -177,6 +150,7 @@ namespace Mesen.Config
 
 		public ConsoleRegion Region;
 
+		[MarshalAs(UnmanagedType.I1)] public bool AllowInvalidInput;
 		[MarshalAs(UnmanagedType.I1)] public bool BlendHighResolutionModes;
 		[MarshalAs(UnmanagedType.I1)] public bool HideBgLayer1;
 		[MarshalAs(UnmanagedType.I1)] public bool HideBgLayer2;
@@ -214,6 +188,7 @@ namespace Mesen.Config
 	{
 		Gauss,
 		Cubic,
+		Sinc,
 		None
 	}
 }

@@ -4,6 +4,7 @@ using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Controls.Platform;
 using Avalonia.Markup.Xaml;
 using Avalonia.Styling;
+using Avalonia.Threading;
 using Mesen.Config;
 using Mesen.Interop;
 using Mesen.Localization;
@@ -21,13 +22,18 @@ namespace Mesen
 
 		public override void Initialize()
 		{
-			AvaloniaXamlLoader.Load(this);
-			StyleHelper.LoadStartupStyles();
-			if(Design.IsDesignMode) {
-				StyleHelper.ApplyTheme(MesenTheme.Light);
+			if(Design.IsDesignMode || ShowConfigWindow) {
 				RequestedThemeVariant = ThemeVariant.Light;
-				StyleHelper.LoadDebuggerStyles();
+			} else {
+				RequestedThemeVariant = ConfigManager.Config.Preferences.Theme == MesenTheme.Dark ? ThemeVariant.Dark : ThemeVariant.Light;
 			}
+			
+			Dispatcher.UIThread.UnhandledException += (s, e) => {
+				MesenMsgBox.ShowException(e.Exception);
+				e.Handled = true;
+			};
+
+			AvaloniaXamlLoader.Load(this);
 			ResourceHelper.LoadResources();
 		}
 
@@ -35,13 +41,17 @@ namespace Mesen
 		{
 			if(ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop) {
 				if(ShowConfigWindow) {
-					StyleHelper.ApplyTheme(MesenTheme.Light);
 					new PreferencesConfig().InitializeFontDefaults();
-					RequestedThemeVariant = ThemeVariant.Light;
 					desktop.MainWindow = new SetupWizardWindow();
 				} else {
-					RequestedThemeVariant = ConfigManager.Config.Preferences.Theme == MesenTheme.Dark ? ThemeVariant.Dark : ThemeVariant.Light;
-					desktop.MainWindow = new MainWindow();
+					try {
+						desktop.MainWindow = new MainWindow();
+					} catch {
+						//Something broke when trying to load the main window, the settings file might be invalid/broken, try to reset them
+						Configuration.BackupSettings(ConfigManager.ConfigFile);
+						ConfigManager.ResetSettings(false);
+						desktop.MainWindow = new MainWindow();
+					}
 				}
 			}
 			base.OnFrameworkInitializationCompleted();

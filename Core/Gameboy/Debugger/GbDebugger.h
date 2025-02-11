@@ -44,11 +44,12 @@ class GbDebugger final : public IDebugger
 	unique_ptr<DummyGbCpu> _dummyCpu;
 
 	uint8_t _prevOpCode = 0xFF;
+	uint16_t _prevStackPointer = 0;
 	uint32_t _prevProgramCounter = 0;
 
 	string _cdlFile;
 
-	__forceinline void ProcessCallStackUpdates(AddressInfo& destAddr, uint16_t destPc);
+	__forceinline void ProcessCallStackUpdates(AddressInfo& destAddr, uint16_t destPc, uint16_t sp);
 
 public:
 	GbDebugger(Debugger* debugger);
@@ -66,6 +67,7 @@ public:
 
 	void Run() override;
 	void Step(int32_t stepCount, StepType type) override;
+	StepBackConfig GetStepBackConfig() override;
 
 	void DrawPartialFrame() override;
 
@@ -75,7 +77,7 @@ public:
 
 	void SetProgramCounter(uint32_t addr, bool updateDebuggerOnly = false) override;
 	uint32_t GetProgramCounter(bool getInstPc) override;
-	uint64_t GetCpuCycleCount() override;
+	uint64_t GetCpuCycleCount(bool forProfiler = false) override;
 	void ResetPrevOpCode() override;
 
 	DebuggerFeatures GetSupportedFeatures() override;

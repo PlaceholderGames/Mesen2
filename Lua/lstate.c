@@ -263,6 +263,10 @@ static void preinit_thread (lua_State *L, global_State *g) {
   L->status = LUA_OK;
   L->errfunc = 0;
   L->oldpc = 0;
+  // ##### MESEN MODIFICATION #####
+  L->watchdoghook = NULL;
+  L->watchdogtimer = 0;
+  // ##### MESEN MODIFICATION #####
 }
 
 

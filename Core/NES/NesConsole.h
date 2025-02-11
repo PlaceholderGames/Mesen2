@@ -19,6 +19,7 @@ class BaseVideoFilter;
 class BaseControlManager;
 class HdAudioDevice;
 class HdPackBuilder;
+class Epsm;
 struct HdPackData;
 struct HdPackBuilderOptions;
 
@@ -64,7 +65,7 @@ public:
 	NesConsole(Emulator* emulator);
 	~NesConsole();
 
-	static vector<string> GetSupportedExtensions() { return { ".nes", ".fds", ".unif", ".unf", ".nsf", ".nsfe", ".studybox" }; }
+	static vector<string> GetSupportedExtensions() { return { ".nes", ".fds", ".unif", ".unf", ".nsf", ".nsfe", ".studybox", ".qd" }; }
 	static vector<string> GetSupportedSignatures() { return { "NES\x1a", "FDS\x1a", "\x1*NINTENDO-HVC*", "NESM\x1a", "NSFE", "UNIF", "STBX" }; }
 
 	NesCpu* GetCpu() { return _cpu.get(); }
@@ -77,6 +78,8 @@ public:
 	NesConfig& GetNesConfig();
 
 	void ProcessCpuClock();
+
+	Epsm* GetEpsm();
 
 	NesConsole* GetVsMainConsole();
 	NesConsole* GetVsSubConsole();

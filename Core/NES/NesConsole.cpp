@@ -20,6 +20,7 @@
 #include "NES/NesNtscFilter.h"
 #include "NES/BisqwitNtscFilter.h"
 #include "NES/NesConstants.h"
+#include "NES/Epsm.h"
 #include "NES/Mappers/VsSystem/VsControlManager.h"
 #include "NES/Mappers/NSF/NsfMapper.h"
 #include "NES/Mappers/FDS/Fds.h"
@@ -62,8 +63,19 @@ NesConfig& NesConsole::GetNesConfig()
 
 void NesConsole::ProcessCpuClock() 
 {
-	_mapper->ProcessCpuClock();
+	if(_mapper->HasCpuClockHook()) {
+		_mapper->ProcessCpuClock();
+	}
+
 	_apu->ProcessCpuClock();
+	if(_controlManager->HasPendingWrites()) {
+		_controlManager->ProcessWrites();
+	}
+}
+
+Epsm* NesConsole::GetEpsm()
+{
+	return _mapper->GetEpsm();
 }
 
 NesConsole* NesConsole::GetVsMainConsole()
@@ -172,6 +184,9 @@ LoadRomResult NesConsole::LoadRom(VirtualFile& romFile)
 
 		_mapper->InitSpecificMapper(romData);
 
+		if(_mapper->GetEpsm()) {
+			_memoryManager->RegisterIODevice(_mapper->GetEpsm());
+		}
 		_memoryManager->RegisterIODevice(_ppu.get());
 		_memoryManager->RegisterIODevice(_apu.get());
 		_memoryManager->RegisterIODevice(_controlManager.get());
@@ -233,6 +248,11 @@ void NesConsole::UpdateRegion(bool forceUpdate)
 			default: region = ConsoleRegion::Ntsc; break;
 		}
 	}
+
+	if(_vsSubConsole) {
+		_vsSubConsole->UpdateRegion(forceUpdate);
+	}
+
 	if(_region != region || forceUpdate) {
 		_region = region;
 
@@ -616,7 +636,7 @@ void NesConsole::InitializeInputDevices(GameInputType inputType, GameSystem syst
 void NesConsole::ProcessCheatCode(InternalCheatCode& code, uint32_t addr, uint8_t& value)
 {
 	if(code.Type == CheatType::NesGameGenie && addr >= 0xC020) {
-		if(GetNesConfig().DisableGameGenieBusConflicts) {
+		if(GetNesConfig().DisableGameGenieBusConflicts || _mapper->HasDefaultWorkRam()) {
 			return;
 		}
 

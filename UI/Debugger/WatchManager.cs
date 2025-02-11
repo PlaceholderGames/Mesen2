@@ -1,6 +1,7 @@
 ﻿using Avalonia.Media;
 using Mesen.Config;
 using Mesen.Debugger.Labels;
+using Mesen.Debugger.Utilities;
 using Mesen.Interop;
 using ReactiveUI;
 using ReactiveUI.Fody.Helpers;
@@ -14,10 +15,12 @@ namespace Mesen.Debugger
 {
 	public class WatchManager
 	{
+		public delegate void WatchChangedEventHandler(bool resetSelection);
+
 		public static Regex FormatSuffixRegex = new Regex(@"^(.*),\s*([B|H|S|U])([\d]){0,1}$", RegexOptions.Compiled);
 		private static Regex _arrayWatchRegex = new Regex(@"\[((\$[0-9A-Fa-f]+)|(\d+)|([@_a-zA-Z0-9]+))\s*,\s*(\d+)\]", RegexOptions.Compiled);
 
-		public event EventHandler? WatchChanged;
+		public event WatchChangedEventHandler? WatchChanged;
 		
 		private List<string> _watchEntries = new List<string>();
 		private CpuType _cpuType;
@@ -45,7 +48,7 @@ namespace Mesen.Debugger
 			set
 			{
 				_watchEntries = new List<string>(value);
-				WatchChanged?.Invoke(null, EventArgs.Empty);
+				WatchChanged?.Invoke(true);
 			}
 		}
 
@@ -73,7 +76,7 @@ namespace Mesen.Debugger
 
 				ProcessFormatSpecifier(ref exprToEvaluate, ref style, ref byteLength);
 
-				int numericValue = -1;
+				Int64 numericValue = -1;
 
 				bool forceHasChanged = false;
 				Match match = _arrayWatchRegex.Match(expression);
@@ -81,7 +84,7 @@ namespace Mesen.Debugger
 					//Watch expression matches the array display syntax (e.g: [$300,10] = display 10 bytes starting from $300)
 					newValue = ProcessArrayDisplaySyntax(style, ref forceHasChanged, match);
 				} else {
-					Int32 result = DebugApi.EvaluateExpression(exprToEvaluate, _cpuType, out resultType, true);
+					Int64 result = DebugApi.EvaluateExpression(exprToEvaluate, _cpuType, out resultType, true);
 					switch(resultType) {
 						case EvalResultType.Numeric:
 							numericValue = result;
@@ -104,7 +107,7 @@ namespace Mesen.Debugger
 			return list;
 		}
 
-		private string FormatValue(int value, WatchFormatStyle style, int byteLength)
+		private string FormatValue(Int64 value, WatchFormatStyle style, int byteLength)
 		{
 			switch(style) {
 				case WatchFormatStyle.Unsigned: return ((UInt32)value).ToString();
@@ -117,10 +120,10 @@ namespace Mesen.Debugger
 					return "%" + binary;
 				case WatchFormatStyle.Signed:
 					int bitCount = byteLength * 8;
-					if(bitCount < 32) {
+					if(bitCount < 64) {
 						if(((value >> (bitCount - 1)) & 0x01) == 0x01) {
 							//Negative value
-							return (value | (-(1 << bitCount))).ToString();
+							return (value | (-(1L << bitCount))).ToString();
 						} else {
 							//Position value
 							return value.ToString();
@@ -131,11 +134,6 @@ namespace Mesen.Debugger
 
 				default: throw new Exception("Unsupported format");
 			}
-		}
-
-		public bool IsArraySyntax(string expression)
-		{
-			return _arrayWatchRegex.IsMatch(expression);
 		}
 
 		private bool ProcessFormatSpecifier(ref string expression, ref WatchFormatStyle style, ref int byteLength)
@@ -167,18 +165,25 @@ namespace Mesen.Debugger
 		private string ProcessArrayDisplaySyntax(WatchFormatStyle style, ref bool forceHasChanged, Match match)
 		{
 			string newValue;
-			int address;
+			Int64 address;
 			if(match.Groups[2].Value.Length > 0) {
-				address = int.Parse(match.Groups[2].Value.Substring(1), System.Globalization.NumberStyles.HexNumber);
+				address = Int64.Parse(match.Groups[2].Value.Substring(1), System.Globalization.NumberStyles.HexNumber);
 			} else if(match.Groups[3].Value.Length > 0) {
-				address = int.Parse(match.Groups[3].Value);
+				address = Int64.Parse(match.Groups[3].Value);
 			} else if(match.Groups[4].Value.Length > 0) {
-				CodeLabel? label = LabelManager.GetLabel(match.Groups[4].Value);
+				string token = match.Groups[4].Value.Trim();
+				CodeLabel? label = LabelManager.GetLabel(token);
 				if(label == null) {
-					forceHasChanged = true;
-					return "<invalid label>";
+					Int64 value = DebugApi.EvaluateExpression(token, _cpuType, out EvalResultType result, true);
+					if(result == EvalResultType.Numeric) {
+						address = value;
+					} else {
+						forceHasChanged = true;
+						return "<invalid label>";
+					}
+				} else {
+					address = label.GetRelativeAddress(_cpuType).Address;
 				}
-				address = label.GetRelativeAddress(_cpuType).Address;
 			} else {
 				return "<invalid expression>";
 			}
@@ -188,8 +193,11 @@ namespace Mesen.Debugger
 			if(address >= 0) {
 				List<string> values = new List<string>(elemCount);
 				MemoryType memType = _cpuType.ToMemoryType();
-				for(int j = address, end = address + elemCount; j < end; j++) {
-					int memValue = DebugApi.GetMemoryValue(memType, (uint)j);
+				for(Int64 j = address, end = address + elemCount; j < end; j++) {
+					if(j > UInt32.MaxValue) {
+						break;
+					}
+					int memValue = DebugApi.GetMemoryValue(memType, (UInt32)j);
 					values.Add(FormatValue(memValue, style, 1));
 				}
 				newValue = string.Join(" ", values);
@@ -206,7 +214,8 @@ namespace Mesen.Debugger
 			foreach(string expression in expressions) {
 				_watchEntries.Add(expression);
 			}
-			WatchChanged?.Invoke(null, EventArgs.Empty);
+			WatchChanged?.Invoke(false);
+			DebugWorkspaceManager.AutoSave();
 		}
 
 		public void UpdateWatch(int index, string expression)
@@ -224,15 +233,17 @@ namespace Mesen.Debugger
 					}
 					_watchEntries[index] = expression;
 				}
-				WatchChanged?.Invoke(null, EventArgs.Empty);
+				WatchChanged?.Invoke(false);
 			}
+			DebugWorkspaceManager.AutoSave();
 		}
 
 		public void RemoveWatch(params int[] indexes)
 		{
 			HashSet<int> set = new HashSet<int>(indexes);
 			_watchEntries = _watchEntries.Where((el, index) => !set.Contains(index)).ToList();
-			WatchChanged?.Invoke(null, EventArgs.Empty);
+			WatchChanged?.Invoke(true);
+			DebugWorkspaceManager.AutoSave();
 		}
 
 		public void Import(string filename)
@@ -294,7 +305,7 @@ namespace Mesen.Debugger
 		[Reactive] public string Value { get; set; } = "";
 		[Reactive] public string Expression { get; set; } = "";
 		[Reactive] public bool IsChanged { get; set; } = false;
-		public int NumericValue { get; set; } = -1;
+		public Int64 NumericValue { get; set; } = -1;
 	}
 
 	public enum WatchFormatStyle

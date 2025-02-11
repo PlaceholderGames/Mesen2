@@ -1,5 +1,6 @@
 #include "pch.h"
 #include <algorithm>
+#include <regex>
 #include "Lua/lua.hpp"
 #include "Lua/luasocket.hpp"
 #include "Debugger/ScriptingContext.h"
@@ -10,9 +11,10 @@
 #include "Debugger/ScriptManager.h"
 #include "Shared/Emulator.h"
 #include "Shared/EmuSettings.h"
+#include "Shared/EventType.h"
 #include "Shared/SaveStateManager.h"
 #include "Utilities/magic_enum.hpp"
-#include "Shared/EventType.h"
+#include "Utilities/StringUtilities.h"
 
 ScriptingContext* ScriptingContext::_context = nullptr;
 
@@ -50,7 +52,7 @@ ScriptingContext::~ScriptingContext()
 	}
 }
 
-bool ScriptingContext::LoadScript(string scriptName, string scriptContent, Debugger* debugger)
+bool ScriptingContext::LoadScript(string scriptName, string path, string scriptContent, Debugger* debugger)
 {
 	_scriptName = scriptName;
 
@@ -78,6 +80,17 @@ bool ScriptingContext::LoadScript(string scriptName, string scriptContent, Debug
 		lua_pop(_lua, 2);
 	}
 
+	if(allowIoOsAccess) {
+		//Escape backslashes
+		std::regex r("\\\\");
+		path = std::regex_replace(path, r, "\\\\");
+
+		//Add path for the current Lua script to package.path to allow
+		//using require() without specifying an absolute path, etc.
+		string cmd = "package.path = package.path .. ';" + path + "?.lua'";
+		luaL_dostring(_lua, cmd.c_str());
+	}
+
 	luaL_requiref(_lua, "emu", LuaApi::GetLibrary, 1);
 	Log("Loading script...");
 	if((iErr = luaL_loadbufferx(_lua, scriptContent.c_str(), scriptContent.size(), ("@" + scriptName).c_str(), nullptr)) == 0) {
@@ -92,9 +105,21 @@ bool ScriptingContext::LoadScript(string scriptName, string scriptContent, Debug
 	}
 
 	if(lua_isstring(_lua, -1)) {
-		Log(lua_tostring(_lua, -1));
+		ProcessLuaError();
 	}
 	return false;
+}
+
+void ScriptingContext::ProcessLuaError()
+{
+	string errorMsg = lua_tostring(_lua, -1);
+	if(StringUtilities::Contains(errorMsg, "attempt to call a nil value (global 'require')") || StringUtilities::Contains(errorMsg, "attempt to index a nil value (global 'os')") || StringUtilities::Contains(errorMsg, "attempt to index a nil value (global 'io')")) {
+		Log("I/O and OS libraries are disabled by default for security.\nYou can enable them here:\nScript->Settings->Script Window->Restrictions->Allow access to I/O and OS functions.");
+	} else if(StringUtilities::Contains(errorMsg, "module 'socket.core' not found")) {
+		Log("Lua sockets are disabled by default for security.\nYou can enable them here:\nScript->Settings->Script Window->Restrictions->Allow network access.");
+	} else {
+		Log(errorMsg);
+	}
 }
 
 void ScriptingContext::ExecutionCountHook(lua_State* lua)
@@ -296,7 +321,7 @@ void ScriptingContext::InternalCallMemoryCallback(AddressInfo relAddr, T& value,
 		lua_pushinteger(_lua, relAddr.Address);
 		lua_pushinteger(_lua, value);
 		if(lua_pcall(_lua, 2, LUA_MULTRET, 0) != 0) {
-			Log(lua_tostring(_lua, -1));
+			ProcessLuaError();
 		} else {
 			int returnParamCount = lua_gettop(_lua) - top;
 			if(returnParamCount && lua_isinteger(_lua, -1)) {
@@ -323,7 +348,7 @@ int ScriptingContext::CallEventCallback(EventType type, CpuType cpuType)
 		lua_rawgeti(_lua, LUA_REGISTRYINDEX, ref);
 		lua_pushinteger(_lua, (int)cpuType);
 		if(lua_pcall(_lua, 1, 0, 0) != 0) {
-			Log(lua_tostring(_lua, -1));
+			ProcessLuaError();
 		}
 	}
 	return l.ReturnCount();

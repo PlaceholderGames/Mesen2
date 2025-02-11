@@ -51,6 +51,7 @@ private:
 
 	static void ExecutionCountHook(lua_State* lua);
 	void LuaOpenLibs(lua_State* L, bool allowIoOsAccess);
+	void ProcessLuaError();
 
 protected:
 	string _scriptName;
@@ -66,7 +67,7 @@ protected:
 public:
 	ScriptingContext(Debugger* debugger);
 	~ScriptingContext();
-	bool LoadScript(string scriptName, string scriptContent, Debugger* debugger);
+	bool LoadScript(string scriptName, string path, string scriptContent, Debugger* debugger);
 
 	void Log(string message);
 	string GetLog();

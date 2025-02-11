@@ -308,6 +308,9 @@ namespace Mesen.Debugger.Utilities
 		[IconFile("SelectAll")]
 		SelectAll,
 
+		[IconFile("Undo")]
+		Undo,
+
 		[IconFile("EditLabel")]
 		EditLabel,
 		
@@ -342,6 +345,11 @@ namespace Mesen.Debugger.Utilities
 
 		[IconFile("Breakpoint")]
 		AddBreakpoint,
+		[IconFile("ForbidBreakpoint")]
+		AddForbidBreakpoint,
+		[IconFile("ForbidBreakpoint")]
+		ToggleForbidBreakpoint,
+
 		[IconFile("Breakpoint")]
 		EditTilemapBreakpoint,
 		[IconFile("Breakpoint")]
@@ -362,9 +370,11 @@ namespace Mesen.Debugger.Utilities
 		RowFormatHex8Bits,
 		RowFormatHex16Bits,
 		RowFormatHex24Bits,
+		RowFormatHex32Bits,
 		RowFormatSigned8Bits,
 		RowFormatSigned16Bits,
 		RowFormatSigned24Bits,
+		RowFormatSigned32Bits,
 		RowFormatUnsigned,
 
 		[IconFile("Close")]
@@ -407,6 +417,12 @@ namespace Mesen.Debugger.Utilities
 
 		[IconFile("StepBack")]
 		StepBack,
+
+		[IconFile("StepBackScanline")]
+		StepBackScanline,
+
+		[IconFile("StepBackFrame")]
+		StepBackFrame,
 
 		[IconFile("RunCpuCycle")]
 		RunCpuCycle,
@@ -557,6 +573,8 @@ namespace Mesen.Debugger.Utilities
 		OpenGsuDebugger,
 		[IconFile("Sa1Debugger")]
 		OpenSa1Debugger,
+		[IconFile("St018Debugger")]
+		OpenSt018Debugger,
 		[IconFile("GameboyDebugger")]
 		OpenGameboyDebugger,
 
@@ -648,10 +666,16 @@ namespace Mesen.Debugger.Utilities
 		Snes,
 		[IconFile("GameboyIcon")]
 		Gameboy,
+		[IconFile("GbaIcon")]
+		Gba,
 		[IconFile("PceIcon")]
 		PcEngine,
 		[IconFile("SmsIcon")]
 		Sms,
+		[IconFile("WsIcon")]
+		Ws,
+		[IconFile("Drive")]
+		OtherConsoles,
 		[IconFile("MediaPause")]
 		Pause,
 		[IconFile("MediaStop")]
@@ -857,5 +881,10 @@ namespace Mesen.Debugger.Utilities
 		NavigateBack,
 		[IconFile("NextArrow")]
 		NavigateForward,
+
+		[IconFile("Close")]
+		ResetProfilerData,
+		[IconFile("Copy")]
+		CopyToClipboard,
 	}
 }

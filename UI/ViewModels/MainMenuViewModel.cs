@@ -224,10 +224,10 @@ namespace Mesen.ViewModels
 				new ContextMenuSeparator(),
 				new MainMenuAction(EmulatorShortcut.PowerOff) { ActionType = ActionType.PowerOff },
 				
-				new ContextMenuSeparator() { IsVisible = () => IsGameRunning && RomInfo.ConsoleType != ConsoleType.Gameboy && RomInfo.Format != RomFormat.GameGear },
+				new ContextMenuSeparator() { IsVisible = () => IsGameRunning && RomInfo.ConsoleType != ConsoleType.Gameboy && RomInfo.Format != RomFormat.GameGear && RomInfo.ConsoleType != ConsoleType.Gba },
 				new MainMenuAction() { 
 					ActionType = ActionType.GameConfig,
-					IsVisible = () => IsGameRunning && RomInfo.ConsoleType != ConsoleType.Gameboy && RomInfo.Format != RomFormat.GameGear,
+					IsVisible = () => IsGameRunning && RomInfo.ConsoleType != ConsoleType.Gameboy && RomInfo.Format != RomFormat.GameGear && RomInfo.ConsoleType != ConsoleType.Gba,
 					IsEnabled = () => IsGameRunning,
 					OnClick = () => {
 						new GameConfigWindow().ShowCenteredDialog((Control)wnd);
@@ -355,6 +355,8 @@ namespace Mesen.ViewModels
 						GetVideoFilterMenuItem(VideoFilterType.NtscBlargg),
 						GetVideoFilterMenuItem(VideoFilterType.NtscBisqwit),
 						new ContextMenuSeparator(),
+						GetVideoFilterMenuItem(VideoFilterType.LcdGrid),
+						new ContextMenuSeparator(),
 						GetVideoFilterMenuItem(VideoFilterType.xBRZ2x),
 						GetVideoFilterMenuItem(VideoFilterType.xBRZ3x),
 						GetVideoFilterMenuItem(VideoFilterType.xBRZ4x),
@@ -412,11 +414,12 @@ namespace Mesen.ViewModels
 					IsEnabled = () => IsGameRunning,
 					IsVisible = () => (
 						!IsGameRunning || 
-						MainWindow.RomInfo.ConsoleType != ConsoleType.Gameboy
+						MainWindow.RomInfo.ConsoleType != ConsoleType.Gameboy && MainWindow.RomInfo.ConsoleType != ConsoleType.Gba
 					),
 					SubActions = new List<object>() {
 						GetRegionMenuItem(ConsoleRegion.Auto),
 						GetPcEngineModelMenuItem(PceConsoleType.Auto),
+						GetWsModelMenuItem(WsModel.Auto),
 						new ContextMenuSeparator(),
 						GetRegionMenuItem(ConsoleRegion.Ntsc),
 						GetRegionMenuItem(ConsoleRegion.NtscJapan),
@@ -424,7 +427,10 @@ namespace Mesen.ViewModels
 						GetRegionMenuItem(ConsoleRegion.Dendy),
 						GetPcEngineModelMenuItem(PceConsoleType.PcEngine),
 						GetPcEngineModelMenuItem(PceConsoleType.SuperGrafx),
-						GetPcEngineModelMenuItem(PceConsoleType.TurboGrafx)
+						GetPcEngineModelMenuItem(PceConsoleType.TurboGrafx),
+						GetWsModelMenuItem(WsModel.Monochrome),
+						GetWsModelMenuItem(WsModel.Color),
+						GetWsModelMenuItem(WsModel.SwanCrystal),
 					}
 				},
 
@@ -477,6 +483,10 @@ namespace Mesen.ViewModels
 					OnClick = () => OpenConfig(wnd, ConfigWindowTab.Gameboy)
 				},
 				new MainMenuAction() {
+					ActionType = ActionType.Gba,
+					OnClick = () => OpenConfig(wnd, ConfigWindowTab.Gba)
+				},
+				new MainMenuAction() {
 					ActionType = ActionType.PcEngine,
 					OnClick = () => OpenConfig(wnd, ConfigWindowTab.PcEngine)
 				},
@@ -484,7 +494,14 @@ namespace Mesen.ViewModels
 					ActionType = ActionType.Sms,
 					OnClick = () => OpenConfig(wnd, ConfigWindowTab.Sms)
 				},
-
+				new MainMenuAction() {
+					ActionType = ActionType.Ws,
+					OnClick = () => OpenConfig(wnd, ConfigWindowTab.Ws)
+				},
+				new MainMenuAction() {
+					ActionType = ActionType.OtherConsoles,
+					OnClick = () => OpenConfig(wnd, ConfigWindowTab.OtherConsoles)
+				},
 				new ContextMenuSeparator(),
 
 				new MainMenuAction() {
@@ -499,9 +516,20 @@ namespace Mesen.ViewModels
 			return new MainMenuAction() {
 				ActionType = ActionType.Custom,
 				CustomText = ResourceHelper.GetEnumText(aspectRatio),
-				IsSelected = () => aspectRatio == ConfigManager.Config.Video.AspectRatio,
+				IsSelected = () => {
+					ConsoleOverrideConfig? overrides = ConsoleOverrideConfig.GetActiveOverride();
+					if(overrides?.OverrideAspectRatio == true) {
+						return aspectRatio == overrides.AspectRatio;
+					}
+					return aspectRatio == ConfigManager.Config.Video.AspectRatio;
+				},
 				OnClick = () => {
-					ConfigManager.Config.Video.AspectRatio = aspectRatio;
+					ConsoleOverrideConfig? overrides = ConsoleOverrideConfig.GetActiveOverride();
+					if(overrides?.OverrideAspectRatio == true) {
+						overrides.AspectRatio = aspectRatio;
+					} else {
+						ConfigManager.Config.Video.AspectRatio = aspectRatio;
+					}
 					ConfigManager.Config.Video.ApplyConfig();
 				}
 			};
@@ -518,7 +546,7 @@ namespace Mesen.ViewModels
 					return ResourceHelper.GetEnumText(region);
 				},
 				IsVisible = () => {
-					if(MainWindow.RomInfo.ConsoleType == ConsoleType.PcEngine || MainWindow.RomInfo.ConsoleType == ConsoleType.Gameboy) {
+					if(MainWindow.RomInfo.ConsoleType == ConsoleType.PcEngine || MainWindow.RomInfo.ConsoleType == ConsoleType.Gameboy || MainWindow.RomInfo.ConsoleType == ConsoleType.Ws) {
 						return false;
 					}
 
@@ -533,7 +561,13 @@ namespace Mesen.ViewModels
 				IsSelected = () => MainWindow.RomInfo.ConsoleType switch {
 					ConsoleType.Snes => ConfigManager.Config.Snes.Region == region,
 					ConsoleType.Nes => ConfigManager.Config.Nes.Region == region,
-					ConsoleType.Sms => (MainWindow.RomInfo.Format == RomFormat.GameGear ? ConfigManager.Config.Sms.GameGearRegion : ConfigManager.Config.Sms.Region) == region,
+					ConsoleType.Sms => (
+						MainWindow.RomInfo.Format switch {
+							RomFormat.ColecoVision => ConfigManager.Config.Cv.Region,
+							RomFormat.GameGear => ConfigManager.Config.Sms.GameGearRegion,
+							_ => ConfigManager.Config.Sms.Region
+						} == region
+					),
 					_ => region == ConsoleRegion.Auto
 				},
 				OnClick = () => {
@@ -549,12 +583,13 @@ namespace Mesen.ViewModels
 							break;
 
 						case ConsoleType.Sms:
-							if(MainWindow.RomInfo.Format == RomFormat.GameGear) {
-								ConfigManager.Config.Sms.GameGearRegion = region;
-							} else {
-								ConfigManager.Config.Sms.Region = region;
+							switch(MainWindow.RomInfo.Format) {
+								default: case RomFormat.Sms: ConfigManager.Config.Sms.Region = region; break;
+								case RomFormat.GameGear: ConfigManager.Config.Sms.GameGearRegion = region; break;
+								case RomFormat.ColecoVision: ConfigManager.Config.Cv.Region = region; break;
 							}
 							ConfigManager.Config.Sms.ApplyConfig();
+							ConfigManager.Config.Cv.ApplyConfig();
 							break;
 
 						default:
@@ -574,6 +609,20 @@ namespace Mesen.ViewModels
 				OnClick = () => {
 					ConfigManager.Config.PcEngine.ConsoleType = model;
 					ConfigManager.Config.PcEngine.ApplyConfig();
+				}
+			};
+		}
+
+		private MainMenuAction GetWsModelMenuItem(WsModel model)
+		{
+			return new MainMenuAction() {
+				ActionType = ActionType.Custom,
+				CustomText = ResourceHelper.GetEnumText(model),
+				IsVisible = () => MainWindow.RomInfo.ConsoleType == ConsoleType.Ws,
+				IsSelected = () => ConfigManager.Config.Ws.Model == model,
+				OnClick = () => {
+					ConfigManager.Config.Ws.Model = model;
+					ConfigManager.Config.Ws.ApplyConfig();
 				}
 			};
 		}
@@ -604,10 +653,21 @@ namespace Mesen.ViewModels
 			return new MainMenuAction() {
 				ActionType = ActionType.Custom,
 				CustomText = ResourceHelper.GetEnumText(filter),
-				IsSelected = () => ConfigManager.Config.Video.VideoFilter == filter,
 				IsEnabled = () => AllowFilterType(filter),
+				IsSelected = () => {
+					ConsoleOverrideConfig? overrides = ConsoleOverrideConfig.GetActiveOverride();
+					if(overrides?.OverrideVideoFilter == true) {
+						return filter == overrides.VideoFilter;
+					}
+					return filter == ConfigManager.Config.Video.VideoFilter;
+				},
 				OnClick = () => {
-					ConfigManager.Config.Video.VideoFilter = filter;
+					ConsoleOverrideConfig? overrides = ConsoleOverrideConfig.GetActiveOverride();
+					if(overrides?.OverrideVideoFilter == true) {
+						overrides.VideoFilter = filter;
+					} else {
+						ConfigManager.Config.Video.VideoFilter = filter;
+					}
 					ConfigManager.Config.Video.ApplyConfig();
 				}
 			};
@@ -679,7 +739,7 @@ namespace Mesen.ViewModels
 			ToolsMenuItems = new List<object>() {
 				new MainMenuAction() {
 					ActionType = ActionType.Cheats,
-					IsEnabled = () => IsGameRunning,
+					IsEnabled = () => IsGameRunning && MainWindow.RomInfo.ConsoleType.SupportsCheats(),
 					OnClick = () => {
 						ApplicationHelper.GetOrCreateUniqueWindow(wnd, () => new CheatListWindow());
 					}
@@ -887,6 +947,12 @@ namespace Mesen.ViewModels
 					OnClick = () => DebuggerWindow.GetOrOpenWindow(CpuType.Sa1)
 				},
 				new ContextMenuAction() {
+					ActionType = ActionType.OpenSt018Debugger,
+					Shortcut = () => ConfigManager.Config.Debug.Shortcuts.Get(DebuggerShortcut.OpenSt018Debugger),
+					IsVisible = () => MainWindow.RomInfo.CpuTypes.Contains(CpuType.St018),
+					OnClick = () => DebuggerWindow.GetOrOpenWindow(CpuType.St018)
+				},
+				new ContextMenuAction() {
 					ActionType = ActionType.OpenGameboyDebugger,
 					Shortcut = () => ConfigManager.Config.Debug.Shortcuts.Get(DebuggerShortcut.OpenGameboyDebugger),
 					IsVisible = () => MainWindow.RomInfo.ConsoleType == ConsoleType.Snes && MainWindow.RomInfo.CpuTypes.Contains(CpuType.Gameboy),
@@ -965,7 +1031,7 @@ namespace Mesen.ViewModels
 					ActionType = ActionType.OpenProfiler,
 					Shortcut = () => ConfigManager.Config.Debug.Shortcuts.Get(DebuggerShortcut.OpenProfiler),
 					IsEnabled = () => IsGameRunning,
-					OnClick = () => DebugWindowManager.GetOrOpenDebugWindow(() => new ProfilerWindow(new ProfilerWindowViewModel()))
+					OnClick = () => DebugWindowManager.GetOrOpenDebugWindow(() => new ProfilerWindow())
 				},
 				new ContextMenuAction() {
 					ActionType = ActionType.OpenScriptWindow,
@@ -1049,6 +1115,7 @@ namespace Mesen.ViewModels
 			HelpMenuItems = new List<object>() {
 				new MainMenuAction() {
 					ActionType = ActionType.OnlineHelp,
+					IsVisible = () => false,
 					OnClick = () => ApplicationHelper.OpenBrowser("https://www.mesen.ca/documentation/")
 				},
 				new MainMenuAction() {
@@ -1061,6 +1128,7 @@ namespace Mesen.ViewModels
 				},
 				new MainMenuAction() {
 					ActionType = ActionType.ReportBug,
+					IsVisible = () => false,
 					OnClick = () => ApplicationHelper.OpenBrowser("https://www.mesen.ca/reportbug/")
 				},
 				new ContextMenuSeparator(),
@@ -1206,10 +1274,10 @@ namespace Mesen.ViewModels
 			}
 		}
 
-		public void UpdateNetplayMenu()
+		public bool UpdateNetplayMenu()
 		{
 			if(!NetplayApi.IsServerRunning() && !NetplayApi.IsConnected()) {
-				return;
+				return false;
 			}
 
 			List<object> controllerActions = new();
@@ -1236,7 +1304,9 @@ namespace Mesen.ViewModels
 				playerIndex++;
 			}
 
-			controllerActions.Add(new ContextMenuSeparator());
+			if(controllerActions.Count > 0) {
+				controllerActions.Add(new ContextMenuSeparator());
+			}
 
 			controllerActions.Add(new MainMenuAction() {
 				ActionType = ActionType.Custom,
@@ -1246,6 +1316,8 @@ namespace Mesen.ViewModels
 			});
 
 			_selectControllerAction.SubActions = controllerActions;
+
+			return true;
 		}
 	}
 }

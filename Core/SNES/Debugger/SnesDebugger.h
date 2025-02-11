@@ -61,6 +61,7 @@ class SnesDebugger final : public IDebugger
 	CpuType _cpuType;
 	MemoryType _cpuMemType;
 	uint8_t _prevOpCode = 0xFF;
+	uint16_t _prevStackPointer = 0;
 	uint32_t _prevProgramCounter = 0;
 
 	bool _predictiveBreakpoints = false;
@@ -73,7 +74,7 @@ class SnesDebugger final : public IDebugger
 
 	SnesCpuState& GetCpuState();
 	bool IsRegister(uint32_t addr);
-	__forceinline void ProcessCallStackUpdates(AddressInfo& destAddr, uint32_t destPc, uint8_t cpuFlags);
+	__forceinline void ProcessCallStackUpdates(AddressInfo& destAddr, uint32_t destPc, uint8_t cpuFlags, uint16_t sp);
 	__forceinline AddressInfo GetAbsoluteAddress(uint32_t addr);
 
 public:
@@ -85,7 +86,7 @@ public:
 
 	void ProcessConfigChange() override;
 
-	uint64_t GetCpuCycleCount() override;
+	uint64_t GetCpuCycleCount(bool forProfiler) override;
 	void ResetPrevOpCode() override;
 
 	void ProcessInstruction();
@@ -99,12 +100,15 @@ public:
 
 	void Run() override;
 	void Step(int32_t stepCount, StepType type) override;
+	StepBackConfig GetStepBackConfig() override;
 
 	void DrawPartialFrame() override;
 	
 	DebuggerFeatures GetSupportedFeatures() override;
 	void SetProgramCounter(uint32_t addr, bool updateDebuggerOnly = false) override;
 	uint32_t GetProgramCounter(bool getInstPc) override;
+	
+	uint8_t GetCpuFlags() override;
 
 	ITraceLogger* GetTraceLogger() override;
 	BreakpointManager* GetBreakpointManager() override;

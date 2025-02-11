@@ -3,6 +3,7 @@ using Avalonia.Interactivity;
 using Avalonia.Markup.Xaml;
 using Mesen.Utilities;
 using Mesen.ViewModels;
+using System.Collections;
 
 namespace Mesen.Views
 {
@@ -21,6 +22,15 @@ namespace Mesen.Views
 				//game only and doesn't re-activate the main menu
 				ApplicationHelper.GetMainWindow()?.Focus();
 			};
+
+			Panel panel = this.GetControl<Panel>("MenuPanel");
+			panel.PointerPressed += (s, e) => {
+				if(s == panel) {
+					//Close the menu when the blank space on the right is clicked
+					MainMenu.Close();
+					ApplicationHelper.GetMainWindow()?.Focus();
+				}
+			};
 		}
 
 		private void InitializeComponent()
@@ -31,7 +41,13 @@ namespace Mesen.Views
 		private void mnuTools_Opened(object sender, RoutedEventArgs e)
 		{
 			if(DataContext is MainMenuViewModel model) {
-				model.UpdateNetplayMenu();
+				if(model.UpdateNetplayMenu() && e.Source is MenuItem item) {
+					//Force a refresh of the tools menu to ensure
+					//the "Select controller" submenu gets updated
+					IEnumerable? items = item.ItemsSource;
+					item.ItemsSource = null;
+					item.ItemsSource = items;
+				}
 			}
 		}
 	}

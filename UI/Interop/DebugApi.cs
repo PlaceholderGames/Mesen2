@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
@@ -8,6 +9,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
 using Avalonia;
+using Mesen.Config;
 using Mesen.Debugger;
 using Mesen.Utilities;
 
@@ -95,33 +97,17 @@ namespace Mesen.Interop
 		}
 
 		[DllImport(DllPath)] private static extern void GetCpuState(IntPtr state, CpuType cpuType);
-		public unsafe static T GetCpuState<T>(CpuType cpuType) where T : struct, BaseState
+		public unsafe static T GetCpuState<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors | DynamicallyAccessedMemberTypes.NonPublicConstructors)] T>(CpuType cpuType) where T : struct, BaseState
 		{
-			byte* ptr = stackalloc byte[Marshal.SizeOf(typeof(T))];
+			byte* ptr = stackalloc byte[Marshal.SizeOf<T>()];
 			DebugApi.GetCpuState((IntPtr)ptr, cpuType);
 			return Marshal.PtrToStructure<T>((IntPtr)ptr);
 		}
 
-		public static BaseState GetCpuState(CpuType cpuType)
-		{
-			return cpuType switch {
-				CpuType.Snes => GetCpuState<SnesCpuState>(cpuType),
-				CpuType.Spc => GetCpuState<SpcState>(cpuType),
-				CpuType.NecDsp => GetCpuState<NecDspState>(cpuType),
-				CpuType.Sa1 => GetCpuState<SnesCpuState>(cpuType),
-				CpuType.Gsu => GetCpuState<GsuState>(cpuType),
-				CpuType.Cx4 => GetCpuState<Cx4State>(cpuType),
-				CpuType.Gameboy => GetCpuState<GbCpuState>(cpuType),
-				CpuType.Nes => GetCpuState<NesCpuState>(cpuType),
-				CpuType.Sms => GetCpuState<SmsCpuState>(cpuType),
-				_ => throw new Exception("Unsupport cpu type")
-			};
-		}
-
 		[DllImport(DllPath)] private static extern void GetPpuState(IntPtr state, CpuType cpuType);
-		public unsafe static T GetPpuState<T>(CpuType cpuType) where T : struct, BaseState
+		public unsafe static T GetPpuState<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors | DynamicallyAccessedMemberTypes.NonPublicConstructors)] T>(CpuType cpuType) where T : struct, BaseState
 		{
-			byte* ptr = stackalloc byte[Marshal.SizeOf(typeof(T))];
+			byte* ptr = stackalloc byte[Marshal.SizeOf<T>()];
 			DebugApi.GetPpuState((IntPtr)ptr, cpuType);
 			return Marshal.PtrToStructure<T>((IntPtr)ptr);
 		}
@@ -134,14 +120,16 @@ namespace Mesen.Interop
 				CpuType.Gameboy => GetPpuState<GbPpuState>(cpuType),
 				CpuType.Pce => GetPpuState<PceVideoState>(cpuType),
 				CpuType.Sms => GetPpuState<SmsVdpState>(cpuType),
-				_ => throw new Exception("Unsupport cpu type")
+				CpuType.Gba => GetPpuState<GbaPpuState>(cpuType),
+				CpuType.Ws => GetPpuState<WsPpuState>(cpuType),
+				_ => throw new Exception("Unsupported cpu type")
 			};
 		}
 
 		[DllImport(DllPath)] private static extern void GetPpuToolsState(CpuType cpuType, IntPtr state);
-		public unsafe static T GetPpuToolsState<T>(CpuType cpuType) where T : struct, BaseState
+		public unsafe static T GetPpuToolsState<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors | DynamicallyAccessedMemberTypes.NonPublicConstructors)] T>(CpuType cpuType) where T : struct, BaseState
 		{
-			byte* ptr = stackalloc byte[Marshal.SizeOf(typeof(T))];
+			byte* ptr = stackalloc byte[Marshal.SizeOf<T>()];
 			DebugApi.GetPpuToolsState(cpuType, (IntPtr)ptr);
 			return Marshal.PtrToStructure<T>((IntPtr)ptr);
 		}
@@ -150,40 +138,42 @@ namespace Mesen.Interop
 		{
 			return cpuType switch {
 				CpuType.Snes => GetPpuToolsState<SnesPpuToolsState>(cpuType),
-				CpuType.Nes => GetPpuToolsState<EmptyPpuToolsState>(cpuType),
+				CpuType.Nes => GetPpuToolsState<NesPpuToolsState>(cpuType),
 				CpuType.Gameboy => GetPpuToolsState<EmptyPpuToolsState>(cpuType),
 				CpuType.Pce => GetPpuToolsState<EmptyPpuToolsState>(cpuType),
 				CpuType.Sms => GetPpuToolsState<EmptyPpuToolsState>(cpuType),
-				_ => throw new Exception("Unsupport cpu type")
+				CpuType.Gba => GetPpuToolsState<EmptyPpuToolsState>(cpuType),
+				CpuType.Ws => GetPpuToolsState<EmptyPpuToolsState>(cpuType),
+				_ => throw new Exception("Unsupported cpu type")
 			};
 		}
 
 		[DllImport(DllPath)] private static extern void SetPpuState(IntPtr state, CpuType cpuType);
-		public unsafe static void SetPpuState(BaseState state, CpuType cpuType)
+		public unsafe static void SetPpuState<T>(T state, CpuType cpuType) where T : BaseState
 		{
 			Debug.Assert(state.GetType().IsValueType);
 			Debug.Assert(IsValidPpuState(ref state, cpuType));
 
-			byte* stateBuffer = stackalloc byte[Marshal.SizeOf(state.GetType())];
+			byte* stateBuffer = stackalloc byte[Marshal.SizeOf<T>()];
 			Marshal.StructureToPtr(state, (IntPtr)stateBuffer, false);
 			DebugApi.SetPpuState((IntPtr)stateBuffer, cpuType);
 		}
 
 		[DllImport(DllPath)] private static extern void SetCpuState(IntPtr state, CpuType cpuType);
-		public unsafe static void SetCpuState(BaseState state, CpuType cpuType)
+		public unsafe static void SetCpuState<T>(T state, CpuType cpuType) where T : BaseState
 		{
 			Debug.Assert(state.GetType().IsValueType);
 			Debug.Assert(IsValidCpuState(ref state, cpuType));
 
-			byte* stateBuffer = stackalloc byte[Marshal.SizeOf(state.GetType())];
+			byte* stateBuffer = stackalloc byte[Marshal.SizeOf<T>()];
 			Marshal.StructureToPtr(state, (IntPtr)stateBuffer, false);
 			DebugApi.SetCpuState((IntPtr)stateBuffer, cpuType);
 		}
 
 		[DllImport(DllPath)] private static extern void GetConsoleState(IntPtr state, ConsoleType consoleType);
-		public unsafe static T GetConsoleState<T>(ConsoleType consoleType) where T : struct, BaseState
+		public unsafe static T GetConsoleState<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors | DynamicallyAccessedMemberTypes.NonPublicConstructors)] T>(ConsoleType consoleType) where T : struct, BaseState
 		{
-			byte* ptr = stackalloc byte[Marshal.SizeOf(typeof(T))];
+			byte* ptr = stackalloc byte[Marshal.SizeOf<T>()];
 			DebugApi.GetConsoleState((IntPtr)ptr, consoleType);
 			return Marshal.PtrToStructure<T>((IntPtr)ptr);
 		}
@@ -191,7 +181,7 @@ namespace Mesen.Interop
 		[DllImport(DllPath)] public static extern void SetProgramCounter(CpuType cpuType, UInt32 address);
 		[DllImport(DllPath)] public static extern UInt32 GetProgramCounter(CpuType cpuType, [MarshalAs(UnmanagedType.I1)] bool getInstPc);
 
-		[DllImport(DllPath)] public static extern Int32 LoadScript(string name, [MarshalAs(UnmanagedType.LPUTF8Str)] string content, Int32 scriptId = -1);
+		[DllImport(DllPath)] public static extern Int32 LoadScript([MarshalAs(UnmanagedType.LPUTF8Str)]string name, [MarshalAs(UnmanagedType.LPUTF8Str)]string path, [MarshalAs(UnmanagedType.LPUTF8Str)] string content, Int32 scriptId = -1);
 		[DllImport(DllPath)] public static extern void RemoveScript(Int32 scriptId);
 
 		[DllImport(DllPath, EntryPoint = "GetScriptLog")] private static extern void GetScriptLogWrapper(Int32 scriptId, IntPtr outScriptLog, Int32 maxLength);
@@ -204,7 +194,7 @@ namespace Mesen.Interop
 			}
 		}
 
-		[DllImport(DllPath)] public static extern Int32 EvaluateExpression([MarshalAs(UnmanagedType.LPUTF8Str)] string expression, CpuType cpuType, out EvalResultType resultType, [MarshalAs(UnmanagedType.I1)] bool useCache);
+		[DllImport(DllPath)] public static extern Int64 EvaluateExpression([MarshalAs(UnmanagedType.LPUTF8Str)] string expression, CpuType cpuType, out EvalResultType resultType, [MarshalAs(UnmanagedType.I1)] bool useCache);
 
 		[DllImport(DllPath)] public static extern DebuggerFeatures GetDebuggerFeatures(CpuType type);
 		[DllImport(DllPath)] public static extern CpuInstructionProgress GetInstructionProgress(CpuType type);
@@ -214,6 +204,9 @@ namespace Mesen.Interop
 		[DllImport(DllPath)] public static extern void SetMemoryValue(MemoryType type, UInt32 address, byte value);
 		[DllImport(DllPath)] public static extern void SetMemoryValues(MemoryType type, UInt32 address, [In] byte[] data, Int32 length);
 		[DllImport(DllPath)] public static extern void SetMemoryState(MemoryType type, [In] byte[] buffer, Int32 length);
+		
+		[DllImport(DllPath)][return: MarshalAs(UnmanagedType.I1)] public static extern bool HasUndoHistory();
+		[DllImport(DllPath)] public static extern void PerformUndo();
 
 		[DllImport(DllPath)] public static extern void UpdateFrozenAddresses(CpuType cpuType, UInt32 start, UInt32 end, [MarshalAs(UnmanagedType.I1)] bool freeze);
 		[DllImport(DllPath)] private static extern void GetFrozenState(CpuType type, UInt32 start, UInt32 end, [In, Out] byte[] outState);
@@ -227,7 +220,7 @@ namespace Mesen.Interop
 		[DllImport(DllPath)] public static extern AddressInfo GetAbsoluteAddress(AddressInfo relAddress);
 		[DllImport(DllPath)] public static extern AddressInfo GetRelativeAddress(AddressInfo absAddress, CpuType cpuType);
 
-		[DllImport(DllPath)] public static extern void SetLabel(uint address, MemoryType memType, string label, string comment);
+		[DllImport(DllPath)] public static extern void SetLabel(uint address, MemoryType memType, [MarshalAs(UnmanagedType.LPUTF8Str)] string label, [MarshalAs(UnmanagedType.LPUTF8Str)] string comment);
 		[DllImport(DllPath)] public static extern void ClearLabels();
 
 		[DllImport(DllPath)] public static extern void SetBreakpoints([MarshalAs(UnmanagedType.LPArray, SizeParamIndex = 1)] InteropBreakpoint[] breakpoints, UInt32 length);
@@ -247,6 +240,16 @@ namespace Mesen.Interop
 				}
 			}
 			return indexes;
+		}
+
+		[DllImport(DllPath, EntryPoint = "GetRomHeader")] private static extern void GetRomHeaderWrapper([In, Out] byte[] headerData, ref UInt32 size);
+		public static byte[] GetRomHeader()
+		{
+			UInt32 size = 0x1000;
+			byte[] headerData = new byte[size];
+			DebugApi.GetRomHeaderWrapper(headerData, ref size);
+			Array.Resize(ref headerData, (Int32)size);
+			return headerData;
 		}
 
 		[DllImport(DllPath)][return: MarshalAs(UnmanagedType.I1)] public static extern bool SaveRomToDisk([MarshalAs(UnmanagedType.LPUTF8Str)] string filename, [MarshalAs(UnmanagedType.I1)] bool saveAsIps, CdlStripOption cdlStripOption);
@@ -280,20 +283,24 @@ namespace Mesen.Interop
 			DebugApi.GetMemoryStateWrapper(type, dst);
 		}
 
-		[DllImport(DllPath)] private static extern DebugTilemapInfo GetTilemap(CpuType cpuType, InteropGetTilemapOptions options, IntPtr state, byte[] vram, UInt32[] palette, IntPtr outputBuffer);
-		public unsafe static DebugTilemapInfo GetTilemap(CpuType cpuType, GetTilemapOptions options, BaseState state, byte[] vram, UInt32[] palette, IntPtr outputBuffer)
+		[DllImport(DllPath)] private static extern DebugTilemapInfo GetTilemap(CpuType cpuType, InteropGetTilemapOptions options, IntPtr state, IntPtr ppuToolsState, byte[] vram, UInt32[] palette, IntPtr outputBuffer);
+		public unsafe static DebugTilemapInfo GetTilemap(CpuType cpuType, GetTilemapOptions options, BaseState state, BaseState ppuToolsState, byte[] vram, UInt32[] palette, IntPtr outputBuffer)
 		{
 			Debug.Assert(state.GetType().IsValueType);
 			Debug.Assert(IsValidPpuState(ref state, cpuType));
 
 			fixed(byte* compareVramPtr = options.CompareVram) {
 				fixed(AddressCounters* accessCounters = options.AccessCounters) {
-					byte* stateBuffer = stackalloc byte[Marshal.SizeOf(state.GetType())];
+					byte* stateBuffer = stackalloc byte[GetStateSize(state)];
 					Marshal.StructureToPtr(state, (IntPtr)stateBuffer, false);
+
+					byte* ppuToolsStateBuffer = stackalloc byte[GetStateSize(ppuToolsState)];
+					Marshal.StructureToPtr(ppuToolsState, (IntPtr)ppuToolsStateBuffer, false);
+
 					InteropGetTilemapOptions interopOptions = options.ToInterop();
 					interopOptions.CompareVram = (IntPtr)compareVramPtr;
 					interopOptions.AccessCounters = (IntPtr)accessCounters;
-					return DebugApi.GetTilemap(cpuType, interopOptions, (IntPtr)stateBuffer, vram, palette, outputBuffer);
+					return DebugApi.GetTilemap(cpuType, interopOptions, (IntPtr)stateBuffer, (IntPtr)ppuToolsStateBuffer, vram, palette, outputBuffer);
 				}
 			}
 		}
@@ -304,63 +311,70 @@ namespace Mesen.Interop
 			Debug.Assert(state.GetType().IsValueType);
 			Debug.Assert(IsValidPpuState(ref state, cpuType));
 
-			byte* ptr = stackalloc byte[Marshal.SizeOf(state.GetType())];
+			byte* ptr = stackalloc byte[GetStateSize(state)];
 			Marshal.StructureToPtr(state, (IntPtr)ptr, false);
+
 			return DebugApi.GetTilemapSize(cpuType, options.ToInterop(), (IntPtr)ptr);
 		}
 
-		[DllImport(DllPath)] private static extern DebugTilemapTileInfo GetTilemapTileInfo(UInt32 x, UInt32 y, CpuType cpuType, InteropGetTilemapOptions options, byte[] vram, IntPtr state);
-		public unsafe static DebugTilemapTileInfo? GetTilemapTileInfo(UInt32 x, UInt32 y, CpuType cpuType, GetTilemapOptions options, byte[] vram, BaseState state)
+		[DllImport(DllPath)] private static extern DebugTilemapTileInfo GetTilemapTileInfo(UInt32 x, UInt32 y, CpuType cpuType, InteropGetTilemapOptions options, byte[] vram, IntPtr state, IntPtr ppuToolsState);
+		public unsafe static DebugTilemapTileInfo? GetTilemapTileInfo(UInt32 x, UInt32 y, CpuType cpuType, GetTilemapOptions options, byte[] vram, BaseState state, BaseState ppuToolsState)
 		{
 			Debug.Assert(state.GetType().IsValueType);
 			Debug.Assert(IsValidPpuState(ref state, cpuType));
 
-			byte* ptr = stackalloc byte[Marshal.SizeOf(state.GetType())];
+			byte* ptr = stackalloc byte[GetStateSize(state)];
 			Marshal.StructureToPtr(state, (IntPtr)ptr, false);
-			DebugTilemapTileInfo info = DebugApi.GetTilemapTileInfo(x, y, cpuType, options.ToInterop(), vram, (IntPtr)ptr);
+
+			byte* ppuToolsStateBuffer = stackalloc byte[GetStateSize(ppuToolsState)];
+			Marshal.StructureToPtr(ppuToolsState, (IntPtr)ppuToolsStateBuffer, false);
+
+			DebugTilemapTileInfo info = DebugApi.GetTilemapTileInfo(x, y, cpuType, options.ToInterop(), vram, (IntPtr)ptr, (IntPtr)ppuToolsStateBuffer);
 			return info.Row >= 0 ? info : null;
 		}
 
 		[DllImport(DllPath)] public static extern void GetTileView(CpuType cpuType, GetTileViewOptions options, byte[] source, int srcSize, UInt32[] palette, IntPtr buffer);
 
-		[DllImport(DllPath)] private static extern void GetSpritePreview(CpuType cpuType, GetSpritePreviewOptions options, IntPtr state, byte[] vram, byte[]? spriteRam, UInt32[] palette, IntPtr buffer);
-		public unsafe static void GetSpritePreview(CpuType cpuType, GetSpritePreviewOptions options, BaseState state, byte[] vram, byte[] spriteRam, UInt32[] palette, IntPtr outputBuffer)
+		[DllImport(DllPath)] private static extern DebugSpritePreviewInfo GetSpritePreviewInfo(CpuType cpuType, GetSpritePreviewOptions options, IntPtr state, IntPtr ppuToolsState);
+		public unsafe static DebugSpritePreviewInfo GetSpritePreviewInfo(CpuType cpuType, GetSpritePreviewOptions options, BaseState state, BaseState ppuToolsState)
 		{
 			Debug.Assert(state.GetType().IsValueType);
 			Debug.Assert(IsValidPpuState(ref state, cpuType));
 
-			byte* ptr = stackalloc byte[Marshal.SizeOf(state.GetType())];
+			byte* ptr = stackalloc byte[GetStateSize(state)];
 			Marshal.StructureToPtr(state, (IntPtr)ptr, false);
-			DebugApi.GetSpritePreview(cpuType, options, (IntPtr)ptr, vram, spriteRam.Length > 0 ? spriteRam : null, palette, outputBuffer);
+
+			byte* ppuToolsStateBuffer = stackalloc byte[GetStateSize(ppuToolsState)];
+			Marshal.StructureToPtr(ppuToolsState, (IntPtr)ppuToolsStateBuffer, false);
+
+			return DebugApi.GetSpritePreviewInfo(cpuType, options, (IntPtr)ptr, (IntPtr)ppuToolsStateBuffer);
 		}
 
-		[DllImport(DllPath)] private static extern DebugSpritePreviewInfo GetSpritePreviewInfo(CpuType cpuType, GetSpritePreviewOptions options, IntPtr state);
-		public unsafe static DebugSpritePreviewInfo GetSpritePreviewInfo(CpuType cpuType, GetSpritePreviewOptions options, BaseState state)
+		[DllImport(DllPath)] private static extern void GetSpriteList(CpuType cpuType, GetSpritePreviewOptions options, IntPtr state, IntPtr ppuToolsState, byte[] vram, byte[]? spriteRam, UInt32[] palette, IntPtr sprites, IntPtr spritePreviews, IntPtr screenPreview);
+		public unsafe static void GetSpriteList(ref DebugSpriteInfo[] result, ref UInt32[] spritePreviews, CpuType cpuType, GetSpritePreviewOptions options, BaseState state, BaseState ppuToolsState, byte[] vram, byte[] spriteRam, UInt32[] palette, IntPtr screenPreview)
 		{
 			Debug.Assert(state.GetType().IsValueType);
 			Debug.Assert(IsValidPpuState(ref state, cpuType));
 
-			byte* ptr = stackalloc byte[Marshal.SizeOf(state.GetType())];
-			Marshal.StructureToPtr(state, (IntPtr)ptr, false);
-			return DebugApi.GetSpritePreviewInfo(cpuType, options, (IntPtr)ptr);
-		}
-
-		[DllImport(DllPath)] private static extern void GetSpriteList(CpuType cpuType, GetSpritePreviewOptions options, IntPtr state, byte[] vram, byte[]? spriteRam, UInt32[] palette, IntPtr sprites);
-		public unsafe static void GetSpriteList(ref DebugSpriteInfo[] result, CpuType cpuType, GetSpritePreviewOptions options, BaseState state, byte[] vram, byte[] spriteRam, UInt32[] palette)
-		{
-			Debug.Assert(state.GetType().IsValueType);
-			Debug.Assert(IsValidPpuState(ref state, cpuType));
-
-			byte* statePtr = stackalloc byte[Marshal.SizeOf(state.GetType())];
+			byte* statePtr = stackalloc byte[GetStateSize(state)];
 			Marshal.StructureToPtr(state, (IntPtr)statePtr, false);
 
-			int count = (int)GetSpritePreviewInfo(cpuType, options, (IntPtr)statePtr).SpriteCount;
+			byte* ppuToolsStateBuffer = stackalloc byte[GetStateSize(ppuToolsState)];
+			Marshal.StructureToPtr(ppuToolsState, (IntPtr)ppuToolsStateBuffer, false);
+
+			int count = (int)GetSpritePreviewInfo(cpuType, options, (IntPtr)statePtr, (IntPtr)ppuToolsStateBuffer).SpriteCount;
 			if(count != result.Length) {
 				Array.Resize(ref result, count);
 			}
 
+			if(count*128*128 != spritePreviews.Length) {
+				Array.Resize(ref spritePreviews, count*128*128);
+			}
+
 			fixed(DebugSpriteInfo* spritesPtr = result) {
-				DebugApi.GetSpriteList(cpuType, options, (IntPtr)statePtr, vram, spriteRam.Length > 0 ? spriteRam : null, palette, (IntPtr)spritesPtr);
+				fixed(UInt32* spritePreviewsPtr = spritePreviews) {
+					DebugApi.GetSpriteList(cpuType, options, (IntPtr)statePtr, (IntPtr)ppuToolsStateBuffer, vram, spriteRam.Length > 0 ? spriteRam : null, palette, (IntPtr)spritesPtr, (IntPtr)spritePreviewsPtr, screenPreview);
+				}
 			}
 		}
 
@@ -392,8 +406,10 @@ namespace Mesen.Interop
 		[DllImport(DllPath)] public static extern void SetEventViewerConfig(CpuType cpuType, InteropSnesEventViewerConfig config);
 		[DllImport(DllPath)] public static extern void SetEventViewerConfig(CpuType cpuType, InteropNesEventViewerConfig config);
 		[DllImport(DllPath)] public static extern void SetEventViewerConfig(CpuType cpuType, InteropGbEventViewerConfig config);
+		[DllImport(DllPath)] public static extern void SetEventViewerConfig(CpuType cpuType, InteropGbaEventViewerConfig config);
 		[DllImport(DllPath)] public static extern void SetEventViewerConfig(CpuType cpuType, InteropPceEventViewerConfig config);
 		[DllImport(DllPath)] public static extern void SetEventViewerConfig(CpuType cpuType, InteropSmsEventViewerConfig config);
+		[DllImport(DllPath)] public static extern void SetEventViewerConfig(CpuType cpuType, InteropWsEventViewerConfig config);
 
 		[DllImport(DllPath, EntryPoint = "GetEventViewerEvent")] private static extern DebugEventInfo GetEventViewerEventWrapper(CpuType cpuType, UInt16 scanline, UInt16 cycle);
 		public static DebugEventInfo? GetEventViewerEvent(CpuType cpuType, UInt16 scanline, UInt16 cycle)
@@ -524,7 +540,7 @@ namespace Mesen.Interop
 			return assembledCode;
 		}
 
-		private static bool IsValidCpuState(ref BaseState state, CpuType cpuType)
+		private static bool IsValidCpuState<T>(ref T state, CpuType cpuType) where T : BaseState
 		{
 			return cpuType switch {
 				CpuType.Snes => state is SnesCpuState,
@@ -533,15 +549,18 @@ namespace Mesen.Interop
 				CpuType.Sa1 => state is SnesCpuState,
 				CpuType.Gsu => state is GsuState,
 				CpuType.Cx4 => state is Cx4State,
+				CpuType.St018 => state is ArmV3CpuState,
 				CpuType.Gameboy => state is GbCpuState,
 				CpuType.Nes => state is NesCpuState,
 				CpuType.Pce => state is PceCpuState,
 				CpuType.Sms => state is SmsCpuState,
+				CpuType.Gba => state is GbaCpuState,
+				CpuType.Ws => state is WsCpuState,
 				_ => false
 			};
 		}
 
-		private static bool IsValidPpuState(ref BaseState state, CpuType cpuType)
+		private static bool IsValidPpuState<T>(ref T state, CpuType cpuType) where T : BaseState
 		{
 			return cpuType.GetConsoleType() switch {
 				ConsoleType.Snes => state is SnesPpuState,
@@ -549,9 +568,19 @@ namespace Mesen.Interop
 				ConsoleType.Gameboy => state is GbPpuState,
 				ConsoleType.PcEngine => state is PceVideoState,
 				ConsoleType.Sms => state is SmsVdpState,
+				ConsoleType.Gba => state is GbaPpuState,
+				ConsoleType.Ws => state is WsPpuState,
 				_ => false
 			};
 		}
+
+		private static int GetStateSize(BaseState state)
+		{
+#pragma warning disable IL3050 // Calling members annotated with 'RequiresDynamicCodeAttribute' may break functionality when AOT compiling.
+			return Marshal.SizeOf(state.GetType());
+#pragma warning restore IL3050 // Calling members annotated with 'RequiresDynamicCodeAttribute' may break functionality when AOT compiling.
+		}
+
 	}
 
 	public enum MemoryType
@@ -562,11 +591,14 @@ namespace Mesen.Interop
 		NecDspMemory,
 		GsuMemory,
 		Cx4Memory,
+		St018Memory,
 		GameboyMemory,
 		NesMemory,
 		NesPpuMemory,
 		PceMemory,
 		SmsMemory,
+		GbaMemory,
+		WsMemory,
 
 		SnesPrgRom,
 		SnesWorkRam,
@@ -586,6 +618,12 @@ namespace Mesen.Interop
 		Cx4DataRam,
 		BsxPsRam,
 		BsxMemoryPack,
+		St018PrgRom,
+		St018DataRom,
+		St018WorkRam,
+		SufamiTurboFirmware,
+		SufamiTurboSecondCart,
+		SufamiTurboSecondCartRam,
 
 		GbPrgRom,
 		GbWorkRam,
@@ -600,6 +638,7 @@ namespace Mesen.Interop
 		NesWorkRam,
 		NesSaveRam,
 		NesNametableRam,
+		NesMapperRam,
 		NesSpriteRam,
 		NesSecondarySpriteRam,
 		NesPaletteRam,
@@ -626,6 +665,23 @@ namespace Mesen.Interop
 		SmsVideoRam,
 		SmsPaletteRam,
 		SmsPort,
+
+		GbaPrgRom,
+		GbaBootRom,
+		GbaSaveRam,
+		GbaIntWorkRam,
+		GbaExtWorkRam,
+		GbaVideoRam,
+		GbaSpriteRam,
+		GbaPaletteRam,
+
+		WsPrgRom,
+		WsWorkRam,
+		WsCartRam,
+		WsCartEeprom,
+		WsBootRom,
+		WsInternalEeprom,
+		WsPort,
 
 		None,
 	}
@@ -710,11 +766,12 @@ namespace Mesen.Interop
 
 	public enum EventFlags
 	{
-		PreviousFrame = 1,
-		RegFirstWrite = 2,
-		RegSecondWrite = 4,
-		HasTargetMemory = 8,
-		SmsVdpPaletteWrite = 16
+		PreviousFrame = 1 << 0,
+		RegFirstWrite = 1 << 1,
+		RegSecondWrite = 1 << 2,
+		HasTargetMemory = 1 << 3,
+		SmsVdpPaletteWrite = 1 << 4,
+		ReadWriteOp = 1 << 5,
 	}
 
 	public record struct DebugEventInfo
@@ -812,7 +869,6 @@ namespace Mesen.Interop
 		public InteropEventViewerCategoryCfg Irq;
 		public InteropEventViewerCategoryCfg MarkedBreakpoints;
 
-		public InteropEventViewerCategoryCfg PpuRegisterReads;
 		public InteropEventViewerCategoryCfg PpuRegisterCgramWrites;
 		public InteropEventViewerCategoryCfg PpuRegisterVramWrites;
 		public InteropEventViewerCategoryCfg PpuRegisterOamWrites;
@@ -820,10 +876,68 @@ namespace Mesen.Interop
 		public InteropEventViewerCategoryCfg PpuRegisterWindowWrites;
 		public InteropEventViewerCategoryCfg PpuRegisterOtherWrites;
 
+		public InteropEventViewerCategoryCfg PpuRegisterCgramReads;
+		public InteropEventViewerCategoryCfg PpuRegisterVramReads;
+		public InteropEventViewerCategoryCfg PpuRegisterOamReads;
+		public InteropEventViewerCategoryCfg PpuRegisterBgScrollReads;
+		public InteropEventViewerCategoryCfg PpuRegisterWindowReads;
+		public InteropEventViewerCategoryCfg PpuRegisterOtherReads;
+
 		public InteropEventViewerCategoryCfg ApuRegisterReads;
 		public InteropEventViewerCategoryCfg ApuRegisterWrites;
-		public InteropEventViewerCategoryCfg CpuRegisterReads;
-		public InteropEventViewerCategoryCfg CpuRegisterWrites;
+
+		public InteropEventViewerCategoryCfg SerialReads;
+		public InteropEventViewerCategoryCfg SerialWrites;
+
+		public InteropEventViewerCategoryCfg TimerReads;
+		public InteropEventViewerCategoryCfg TimerWrites;
+
+		public InteropEventViewerCategoryCfg InputReads;
+		public InteropEventViewerCategoryCfg InputWrites;
+
+		public InteropEventViewerCategoryCfg OtherRegisterReads;
+		public InteropEventViewerCategoryCfg OtherRegisterWrites;
+
+		[MarshalAs(UnmanagedType.I1)] public bool ShowPreviousFrameEvents;
+	}
+
+	[StructLayout(LayoutKind.Sequential)]
+	public class InteropGbaEventViewerConfig
+	{
+		public InteropEventViewerCategoryCfg Irq;
+		public InteropEventViewerCategoryCfg MarkedBreakpoints;
+
+		public InteropEventViewerCategoryCfg PaletteReads;
+		public InteropEventViewerCategoryCfg PaletteWrites;
+		public InteropEventViewerCategoryCfg VramReads;
+		public InteropEventViewerCategoryCfg VramWrites;
+		public InteropEventViewerCategoryCfg OamReads;
+		public InteropEventViewerCategoryCfg OamWrites;
+		
+		public InteropEventViewerCategoryCfg PpuRegisterBgScrollReads;
+		public InteropEventViewerCategoryCfg PpuRegisterBgScrollWrites;
+		public InteropEventViewerCategoryCfg PpuRegisterWindowReads;
+		public InteropEventViewerCategoryCfg PpuRegisterWindowWrites;
+		public InteropEventViewerCategoryCfg PpuRegisterOtherReads;
+		public InteropEventViewerCategoryCfg PpuRegisterOtherWrites;
+
+		public InteropEventViewerCategoryCfg DmaRegisterReads;
+		public InteropEventViewerCategoryCfg DmaRegisterWrites;
+
+		public InteropEventViewerCategoryCfg ApuRegisterReads;
+		public InteropEventViewerCategoryCfg ApuRegisterWrites;
+
+		public InteropEventViewerCategoryCfg SerialReads;
+		public InteropEventViewerCategoryCfg SerialWrites;
+
+		public InteropEventViewerCategoryCfg TimerReads;
+		public InteropEventViewerCategoryCfg TimerWrites;
+
+		public InteropEventViewerCategoryCfg InputReads;
+		public InteropEventViewerCategoryCfg InputWrites;
+
+		public InteropEventViewerCategoryCfg OtherRegisterReads;
+		public InteropEventViewerCategoryCfg OtherRegisterWrites;
 
 		[MarshalAs(UnmanagedType.I1)] public bool ShowPreviousFrameEvents;
 	}
@@ -862,6 +976,8 @@ namespace Mesen.Interop
 		public InteropEventViewerCategoryCfg CdRomReads;
 		public InteropEventViewerCategoryCfg AdpcmWrites;
 		public InteropEventViewerCategoryCfg AdpcmReads;
+		public InteropEventViewerCategoryCfg ArcadeCardWrites;
+		public InteropEventViewerCategoryCfg ArcadeCardReads;
 
 		[MarshalAs(UnmanagedType.I1)] public bool ShowPreviousFrameEvents;
 	}
@@ -890,6 +1006,45 @@ namespace Mesen.Interop
 
 		public InteropEventViewerCategoryCfg GameGearPortWrite;
 		public InteropEventViewerCategoryCfg GameGearPortRead;
+
+		[MarshalAs(UnmanagedType.I1)] public bool ShowPreviousFrameEvents;
+	}
+
+	[StructLayout(LayoutKind.Sequential)]
+	public class InteropWsEventViewerConfig
+	{
+		public InteropEventViewerCategoryCfg PpuPaletteRead;
+		public InteropEventViewerCategoryCfg PpuPaletteWrite;
+		public InteropEventViewerCategoryCfg PpuVramRead;
+		public InteropEventViewerCategoryCfg PpuVramWrite;
+		public InteropEventViewerCategoryCfg PpuVCounterRead;
+		public InteropEventViewerCategoryCfg PpuScrollRead;
+		public InteropEventViewerCategoryCfg PpuScrollWrite;
+		public InteropEventViewerCategoryCfg PpuWindowRead;
+		public InteropEventViewerCategoryCfg PpuWindowWrite;
+		public InteropEventViewerCategoryCfg PpuOtherRead;
+		public InteropEventViewerCategoryCfg PpuOtherWrite;
+		public InteropEventViewerCategoryCfg AudioRead;
+		public InteropEventViewerCategoryCfg AudioWrite;
+		public InteropEventViewerCategoryCfg SerialRead;
+		public InteropEventViewerCategoryCfg SerialWrite;
+		public InteropEventViewerCategoryCfg DmaRead;
+		public InteropEventViewerCategoryCfg DmaWrite;
+		public InteropEventViewerCategoryCfg InputRead;
+		public InteropEventViewerCategoryCfg InputWrite;
+		public InteropEventViewerCategoryCfg IrqRead;
+		public InteropEventViewerCategoryCfg IrqWrite;
+		public InteropEventViewerCategoryCfg TimerRead;
+		public InteropEventViewerCategoryCfg TimerWrite;
+		public InteropEventViewerCategoryCfg EepromRead;
+		public InteropEventViewerCategoryCfg EepromWrite;
+		public InteropEventViewerCategoryCfg CartRead;
+		public InteropEventViewerCategoryCfg CartWrite;
+		public InteropEventViewerCategoryCfg OtherRead;
+		public InteropEventViewerCategoryCfg OtherWrite;
+
+		public InteropEventViewerCategoryCfg Irq;
+		public InteropEventViewerCategoryCfg MarkedBreakpoints;
 
 		[MarshalAs(UnmanagedType.I1)] public bool ShowPreviousFrameEvents;
 	}
@@ -965,7 +1120,14 @@ namespace Mesen.Interop
 		Magenta,
 	}
 
-	public enum NullableBoolean
+	public enum SpriteVisibility : byte
+	{
+		Visible = 0,
+		Offscreen = 1,
+		Disabled = 2
+	}
+
+	public enum NullableBoolean : sbyte
 	{
 		Undefined = -1,
 		False = 0,
@@ -1000,6 +1162,7 @@ namespace Mesen.Interop
 		public UInt32 ColumnCount;
 		public UInt32 TilemapAddress;
 		public UInt32 TilesetAddress;
+		public sbyte Priority;
 	}
 
 	public struct DebugTilemapTileInfo
@@ -1014,9 +1177,12 @@ namespace Mesen.Interop
 
 		public Int32 TileIndex;
 		public Int32 TileAddress;
+		
+		public Int32 PixelData;
 
 		public Int32 PaletteIndex;
 		public Int32 PaletteAddress;
+		public Int32 BasePaletteIndex;
 
 		public Int32 AttributeAddress;
 		public Int16 AttributeData;
@@ -1071,6 +1237,7 @@ namespace Mesen.Interop
 		public UInt32 VisibleHeight;
 
 		[MarshalAs(UnmanagedType.I1)] public bool WrapBottomToTop;
+		[MarshalAs(UnmanagedType.I1)] public bool WrapRightToLeft;
 	}
 
 	public enum DebugSpritePriority
@@ -1101,18 +1268,22 @@ namespace Mesen.Interop
 		public Int16 Bpp;
 		public Int16 Palette;
 		public DebugSpritePriority Priority;
-		public Int16 Width;
-		public Int16 Height;
-		[MarshalAs(UnmanagedType.I1)] public bool HorizontalMirror;
-		[MarshalAs(UnmanagedType.I1)] public bool VerticalMirror;
-		[MarshalAs(UnmanagedType.I1)] public bool Visible;
+		public UInt16 Width;
+		public UInt16 Height;
+		public NullableBoolean HorizontalMirror;
+		public NullableBoolean VerticalMirror;
+		public NullableBoolean MosaicEnabled;
+		public NullableBoolean BlendingEnabled;
+		public NullableBoolean WindowMode;
+		public NullableBoolean TransformEnabled;
+		public NullableBoolean DoubleSize;
+		public sbyte TransformParamIndex;
+		public SpriteVisibility Visibility;
 		[MarshalAs(UnmanagedType.I1)] public bool UseExtendedVram;
 		public NullableBoolean UseSecondTable;
 
 		public UInt32 TileCount;
 		public fixed UInt32 TileAddresses[8*8];
-
-		public fixed UInt32 SpritePreview[64*64];
 	}
 
 	public enum RawPaletteFormat
@@ -1122,11 +1293,13 @@ namespace Mesen.Interop
 		Rgb333,
 		Rgb222,
 		Rgb444,
+		Bgr444,
 	}
 
 	public unsafe struct DebugPaletteInfo
 	{
 		public MemoryType PaletteMemType;
+		public UInt32 PaletteMemOffset;
 		[MarshalAs(UnmanagedType.I1)] public bool HasMemType;
 
 		public UInt32 ColorCount;
@@ -1179,7 +1352,10 @@ namespace Mesen.Interop
 		PceBackgroundBpp2Cg0,
 		PceBackgroundBpp2Cg1,
 		SmsBpp4,
-		SmsSgBpp1
+		SmsSgBpp1,
+		GbaBpp4,
+		GbaBpp8,
+		WsBpp4Packed
 	}
 
 	public static class TileFormatExtensions
@@ -1216,9 +1392,21 @@ namespace Mesen.Interop
 				
 				TileFormat.SmsBpp4 => 4,
 				TileFormat.SmsSgBpp1 => 1,
+				
+				TileFormat.GbaBpp4 => 4,
+				TileFormat.GbaBpp8 => 8,
+				
+				TileFormat.WsBpp4Packed => 4,
 
 				_ => throw new Exception("TileFormat not supported"),
 			};
+		}
+
+		public static int GetBytesPerTile(this TileFormat format)
+		{
+			int bitsPerPixel = format.GetBitsPerPixel();
+			PixelSize tileSize = format.GetTileSize();
+			return tileSize.Width * tileSize.Height * bitsPerPixel / 8;
 		}
 	}
 
@@ -1247,6 +1435,8 @@ namespace Mesen.Interop
 	{
 		Indirect,
 		Direct,
+		x86,
+		x86WithOffset
 	}
 
 	public struct CpuVectorDefinition
@@ -1268,8 +1458,9 @@ namespace Mesen.Interop
 		[MarshalAs(UnmanagedType.I1)] public bool CallStack;
 		[MarshalAs(UnmanagedType.I1)] public bool CpuCycleStep;
 
-		public byte CpuVectorCount;		
-		[MarshalAs(UnmanagedType.ByValArray, SizeConst = 10)]
+		public byte IrqVectorOffset;
+		public byte CpuVectorCount;
+		[MarshalAs(UnmanagedType.ByValArray, SizeConst = 16)]
 		public CpuVectorDefinition[] CpuVectors;
 	}
 
@@ -1297,6 +1488,7 @@ namespace Mesen.Interop
 		public UInt32 Target;
 		public AddressInfo AbsTarget;
 		public UInt32 Return;
+		public UInt32 ReturnStackPointer;
 		public AddressInfo AbsReturn;
 		public StackFrameFlags Flags;
 	};
@@ -1316,10 +1508,13 @@ namespace Mesen.Interop
 		Sa1,
 		Gsu,
 		Cx4,
+		St018,
 		Gameboy,
 		Nes,
 		Pce,
-		Sms
+		Sms,
+		Gba,
+		Ws
 	}
 
 	public enum StepType
@@ -1344,6 +1539,8 @@ namespace Mesen.Interop
 		Pause,
 		CpuStep,
 		PpuStep,
+		Irq,
+		Nmi,
 		InternalOperation,
 
 		BreakOnBrk,
@@ -1351,9 +1548,6 @@ namespace Mesen.Interop
 		BreakOnWdm,
 		BreakOnStp,
 		BreakOnUninitMemoryRead,
-
-		Irq,
-		Nmi,
 
 		GbInvalidOamAccess,
 		GbInvalidVramAccess,
@@ -1373,6 +1567,12 @@ namespace Mesen.Interop
 		PceBreakOnInvalidVramAddress,
 
 		SmsNopLoad,
+
+		GbaInvalidOpCode,
+		GbaNopLoad,
+		GbaUnalignedMemoryAccess,
+		
+		BreakOnUndefinedOpCode
 	}
 
 	public struct BreakEvent
@@ -1427,6 +1627,7 @@ namespace Mesen.Interop
 		public UInt64 MinCycles;
 		public UInt64 MaxCycles;
 		public AddressInfo Address;
+		public StackFrameFlags Flags;
 
 		public UInt64 GetAvgCycles()
 		{
@@ -1492,6 +1693,8 @@ namespace Mesen.Interop
 		[MarshalAs(UnmanagedType.I1)] public bool Y;
 		[MarshalAs(UnmanagedType.I1)] public bool L;
 		[MarshalAs(UnmanagedType.I1)] public bool R;
+		[MarshalAs(UnmanagedType.I1)] public bool U;
+		[MarshalAs(UnmanagedType.I1)] public bool D;
 		[MarshalAs(UnmanagedType.I1)] public bool Up;
 		[MarshalAs(UnmanagedType.I1)] public bool Down;
 		[MarshalAs(UnmanagedType.I1)] public bool Left;

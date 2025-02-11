@@ -8,6 +8,7 @@ using ReactiveUI.Fody.Helpers;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Reflection;
 
@@ -103,7 +104,7 @@ namespace Mesen.Debugger.ViewModels
 			);
 		}
 
-		private void RevertChanges<T>(T current, T original) where T : ReactiveObject
+		private void RevertChanges<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties | DynamicallyAccessedMemberTypes.NonPublicProperties)] T>(T current, T original) where T : ReactiveObject
 		{
 			if(_changes.TryGetValue(current, out HashSet<string>? changes)) {
 				foreach(string propertyName in changes) {
@@ -134,6 +135,7 @@ namespace Mesen.Debugger.ViewModels
 				DebuggerShortcut.Copy,
 				DebuggerShortcut.Paste,
 				DebuggerShortcut.SelectAll,
+				DebuggerShortcut.Undo,
 				DebuggerShortcut.Refresh,
 				DebuggerShortcut.MarkAsCode,
 				DebuggerShortcut.MarkAsData,
@@ -160,6 +162,7 @@ namespace Mesen.Debugger.ViewModels
 
 				DebuggerShortcut.OpenSpcDebugger,
 				DebuggerShortcut.OpenSa1Debugger,
+				DebuggerShortcut.OpenSt018Debugger,
 				DebuggerShortcut.OpenGameboyDebugger,
 				DebuggerShortcut.OpenGsuDebugger,
 				DebuggerShortcut.OpenNecDspDebugger,
@@ -241,6 +244,8 @@ namespace Mesen.Debugger.ViewModels
 				DebuggerShortcut.StepOver,
 				DebuggerShortcut.StepOut,
 				DebuggerShortcut.StepBack,
+				DebuggerShortcut.StepBackScanline,
+				DebuggerShortcut.StepBackFrame,
 				DebuggerShortcut.RunCpuCycle,
 				DebuggerShortcut.RunPpuCycle,
 				DebuggerShortcut.RunPpuScanline,
@@ -282,6 +287,7 @@ namespace Mesen.Debugger.ViewModels
 				DebuggerShortcut.FunctionList_ToggleBreakpoint,
 				DebuggerShortcut.FunctionList_ViewInMemoryViewer,
 				DebuggerShortcut.BreakpointList_Add,
+				DebuggerShortcut.BreakpointList_AddForbid,
 				DebuggerShortcut.BreakpointList_Edit,
 				DebuggerShortcut.BreakpointList_GoToLocation,
 				DebuggerShortcut.BreakpointList_ViewInMemoryViewer,

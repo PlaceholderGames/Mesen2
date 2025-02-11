@@ -77,18 +77,15 @@ void GbMemoryManager::RefreshMappings()
 	}
 }
 
-void GbMemoryManager::Exec()
+void GbMemoryManager::ExecTimerDmaSerial()
 {
-	uint64_t& cycleCount = _cpu->GetState().CycleCount;
-	cycleCount += 2;
 	_state.ApuCycleCount += _state.CgbHighSpeed ? 1 : 2;
 	_timer->Exec();
-	_ppu->Exec();
-	if((cycleCount & 0x03) == 0) {
+	if((_cpu->GetState().CycleCount & 0x03) == 0) {
 		_dmaController->Exec();
 	}
 
-	if(_state.SerialBitCount && (cycleCount & 0x1FF) == 0) {
+	if(_state.SerialBitCount && (_cpu->GetState().CycleCount & 0x1FF) == 0) {
 		_state.SerialData = (_state.SerialData << 1) | 0x01;
 		if(--_state.SerialBitCount == 0) {
 			//"It will be notified that the transfer is complete in two ways:
@@ -99,6 +96,24 @@ void GbMemoryManager::Exec()
 			RequestIrq(GbIrqSource::Serial);
 		}
 	}
+}
+
+void GbMemoryManager::ExecMasterCycle()
+{
+	uint64_t& cycleCount = _cpu->GetState().CycleCount;
+	cycleCount++;
+	if(cycleCount & 1) {
+		ExecTimerDmaSerial();
+	}
+	_ppu->Exec<true>();
+}
+
+void GbMemoryManager::Exec()
+{
+	uint64_t& cycleCount = _cpu->GetState().CycleCount;
+	cycleCount += 2;
+	ExecTimerDmaSerial();
+	_ppu->Exec<false>();
 }
 
 void GbMemoryManager::MapRegisters(uint16_t start, uint16_t end, RegisterAccess access)
@@ -452,6 +467,51 @@ void GbMemoryManager::WriteRegister(uint16_t addr, uint8_t value)
 	}
 }
 
+void GbMemoryManager::ProcessCpuWrite(uint16_t addr, uint8_t value)
+{
+	if((addr & 0xFFC0) != 0xFF40) {
+		Exec();
+		Exec();
+		Write(addr, value);
+		return;
+	}
+
+	//Special cases for LCD registers reads/writes where effects
+	//need to be triggered a bit earlier than other writes
+	switch(addr) {
+		default:
+			//Default case, same write timing as all other writes
+			Exec();
+			Exec();
+			Write(addr, value);
+			break;
+
+		case 0xFF47:
+			//BGP writes appear to be effective slightly earlier than other writes?
+			//This allows the ppu_scanline_bgp and m3_bgp_change tests to display properly
+			ExecMasterCycle();
+			ExecMasterCycle();
+			ExecMasterCycle();
+			Write(addr, value);
+			ExecMasterCycle();
+			break;
+
+		case 0xFF40:
+			//LCDC - For GBC, clearing bit 4 (tile select) causes a glitch if done at the same time as
+			//the BG fetcher is loading tile data (either the LSB or MSB). When this bug is triggered,
+			//the tile data is replaced with the tile index (loaded at the first step of the fetching process)
+			//This needs to be triggered before running the last dot to get the correct result (cgb-acid-hell test)
+			Exec();
+			Exec();
+			if(_gameboy->IsCgb() && (_ppu->GetState().Control & 0x10) && !(value & 0x10)) {
+				//Trigger GBC fetch glitch at the same time as the write occurs
+				_ppu->SetTileFetchGlitchState();
+			}
+			Write(addr, value);
+			break;
+	}
+}
+
 void GbMemoryManager::RequestIrq(uint8_t source)
 {
 	_state.IrqRequests |= source;
@@ -510,17 +570,7 @@ void GbMemoryManager::Serialize(Serializer& s)
 	SV(_state.CgbRegFF72); SV(_state.CgbRegFF73); SV(_state.CgbRegFF74); SV(_state.CgbRegFF75);
 	SV(_state.CgbRegRpInfrared);
 
-	SVArray(_state.MemoryType, 0x100);
-	SVArray(_state.MemoryOffset, 0x100);
-	SVArray(_state.MemoryAccessType, 0x100);
-	SVArray(_state.IsReadRegister, 0x100);
-	SVArray(_state.IsWriteRegister, 0x100);
-
 	if(!s.IsSaving()) {
-		//Restore mappings based on state
-		for(int i = 0; i < 0x100; i++) {
-			Map(i*0x100, i*0x100+0xFF, _state.MemoryType[i], _state.MemoryOffset[i], _state.MemoryAccessType[i] == RegisterAccess::ReadWrite ? false : true);
-		}
 		RefreshMappings();
 	}
 }

@@ -1,6 +1,7 @@
 #include "pch.h"
 #include "SNES/Input/SnesController.h"
 #include "Shared/Emulator.h"
+#include "Shared/EmuSettings.h"
 #include "Shared/InputHud.h"
 
 SnesController::SnesController(Emulator* emu, uint8_t port, KeyMappingSet keyMappings) : BaseControlDevice(emu, ControllerType::SnesController, port, keyMappings)
@@ -30,7 +31,7 @@ void SnesController::InternalSetStateFromInput()
 		SetPressedState(Buttons::Right, keyMapping.Right);
 
 		uint8_t turboFreq = 1 << (4 - _turboSpeed);
-		bool turboOn = (uint8_t)(_emu->GetPpuFrame().FrameCount % turboFreq) < turboFreq / 2;
+		bool turboOn = (uint8_t)(_emu->GetFrameCount() % turboFreq) < turboFreq / 2;
 		if(turboOn) {
 			SetPressedState(Buttons::A, keyMapping.TurboA);
 			SetPressedState(Buttons::B, keyMapping.TurboB);
@@ -38,6 +39,19 @@ void SnesController::InternalSetStateFromInput()
 			SetPressedState(Buttons::Y, keyMapping.TurboY);
 			SetPressedState(Buttons::L, keyMapping.TurboL);
 			SetPressedState(Buttons::R, keyMapping.TurboR);
+		}
+
+		bool allowInvalidInput = _emu->GetConsoleType() == ConsoleType::Nes ? _emu->GetSettings()->GetNesConfig().AllowInvalidInput : _emu->GetSettings()->GetSnesConfig().AllowInvalidInput;
+		if(!allowInvalidInput) {
+			//If both U+D or L+R are pressed at the same time, act as if neither is pressed
+			if(IsPressed(Buttons::Up) && IsPressed(Buttons::Down)) {
+				ClearBit(Buttons::Down);
+				ClearBit(Buttons::Up);
+			}
+			if(IsPressed(Buttons::Left) && IsPressed(Buttons::Right)) {
+				ClearBit(Buttons::Left);
+				ClearBit(Buttons::Right);
+			}
 		}
 	}
 }

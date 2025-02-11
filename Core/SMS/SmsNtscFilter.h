@@ -17,7 +17,6 @@ private:
 	unique_ptr<snes_ntsc_t> _snesNtscData;
 
 	uint32_t* _ntscBuffer = nullptr;
-	uint32_t* _snesNtscBuffer = nullptr;
 	SmsConsole* _console = nullptr;
 
 protected:
@@ -29,6 +28,7 @@ public:
 	virtual ~SmsNtscFilter();
 	
 	OverscanDimensions GetOverscan() override;
+	HudScaleFactors GetScaleFactor() override;
 
 	void ApplyFilter(uint16_t *ppuOutputBuffer) override;
 };

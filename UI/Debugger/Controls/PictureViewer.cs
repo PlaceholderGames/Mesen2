@@ -195,7 +195,6 @@ namespace Mesen.Debugger.Controls
 
 		public PictureViewer()
 		{
-			Focusable = true;
 			VerticalAlignment = VerticalAlignment.Top;
 			HorizontalAlignment = HorizontalAlignment.Left;
 			ClipToBounds = true;
@@ -205,6 +204,14 @@ namespace Mesen.Debugger.Controls
 		private void OnSourceInvalidated(object? sender, EventArgs e)
 		{
 			InvalidateVisual();
+		}
+
+		protected override void OnUnloaded(RoutedEventArgs e)
+		{
+			if(Source is IDynamicBitmap src) {
+				src.Invalidated -= OnSourceInvalidated;
+			}
+			base.OnUnloaded(e);
 		}
 
 		protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
@@ -233,9 +240,10 @@ namespace Mesen.Debugger.Controls
 		{
 			base.OnPointerWheelChanged(e);
 			if(e.KeyModifiers == KeyModifiers.Control) {
-				if(e.Delta.Y > 0) {
+				double delta = e.GetDeltaY();
+				if(delta > 0) {
 					ZoomIn();
-				} else {
+				} else if(delta < 0) {
 					ZoomOut();
 				}
 				e.Handled = true;
@@ -277,15 +285,13 @@ namespace Mesen.Debugger.Controls
 				MinHeight = 0;
 			} else {
 				double dpiScale = LayoutHelper.GetLayoutScale(this);
-				MinWidth = (int)(Source.Size.Width - LeftClipSize - RightClipSize) * Zoom / dpiScale;
-				MinHeight = (int)(Source.Size.Height - TopClipSize - BottomClipSize) * Zoom / dpiScale;
+				MinWidth = Math.Max(0, (int)(Source.Size.Width - LeftClipSize - RightClipSize) * Zoom / dpiScale);
+				MinHeight = Math.Max(0, (int)(Source.Size.Height - TopClipSize - BottomClipSize) * Zoom / dpiScale);
 			}
 		}
 
-		protected override void OnKeyDown(KeyEventArgs e)
+		public void ProcessKeyDown(KeyEventArgs e)
 		{
-			base.OnKeyDown(e);
-
 			if(!AllowSelection) {
 				return;
 			}
@@ -397,6 +403,10 @@ namespace Mesen.Debugger.Controls
 				int height = (int)(Source.Size.Height * Zoom);
 				int gridSizeX = (int)(gridDef.SizeX * Zoom);
 				int gridSizeY = (int)(gridDef.SizeY * Zoom);
+				if(gridSizeX <= 1 || gridSizeY <= 1) {
+					return;
+				}
+
 				double gridRestartY = (int)(gridDef.RestartY * Zoom) + 0.5;
 
 				Pen pen = new Pen(gridDef.Color.ToUInt32(), 1);
@@ -509,12 +519,12 @@ namespace Mesen.Debugger.Controls
 
 				FormattedText text = new FormattedText(point.DisplayValue, CultureInfo.CurrentCulture, FlowDirection.LeftToRight, new Typeface(FontFamily.Default), 14 + Zoom * 2, Brushes.Black);
 
-				Point textPos = new Point(p.X + point.Width * Zoom + 5, p.Y - 5 - text.Height);
+				Point textPos = new Point(p.X + point.Width * Zoom + pen.Thickness * 2 + 5, p.Y - 5 - text.Height - pen.Thickness * 2);
 				if(text.Width + textPos.X >= width) {
-					textPos = textPos.WithX(p.X - text.Width - 5);
+					textPos = textPos.WithX(p.X - text.Width - 5 - pen.Thickness * 2);
 				}
 				if(textPos.Y < 0) {
-					textPos = textPos.WithY(p.Y + point.Height * Zoom + 5);
+					textPos = textPos.WithY(p.Y + point.Height * Zoom + 5 + pen.Thickness);
 				}
 
 				for(int i = -2; i <= 2; i++) {
@@ -531,7 +541,7 @@ namespace Mesen.Debugger.Controls
 		{
 			Rect bounds = Bounds * LayoutHelper.GetLayoutScale(this);
 			context.DrawLine(pen, new Point(p.X - pen.Thickness / 2, 0), new Point(p.X - pen.Thickness / 2, bounds.Height));
-			context.DrawLine(pen, new Point(p.X + point.Width * Zoom + pen.Thickness / 2, 0), new Point(p.X + point.Height * Zoom + pen.Thickness / 2, bounds.Height));
+			context.DrawLine(pen, new Point(p.X + point.Width * Zoom + pen.Thickness / 2, 0), new Point(p.X + point.Width * Zoom + pen.Thickness / 2, bounds.Height));
 
 			context.DrawLine(pen, new Point(0, p.Y - pen.Thickness / 2), new Point(bounds.Width, p.Y - pen.Thickness / 2));
 			context.DrawLine(pen, new Point(0, p.Y + point.Height * Zoom + pen.Thickness / 2), new Point(bounds.Width, p.Y + point.Height * Zoom + pen.Thickness / 2));
@@ -553,7 +563,8 @@ namespace Mesen.Debugger.Controls
 			//  First pixel in the preview image keeps the same data as the tooltip that was active before it
 			//Translate fixes a similar refresh issue when LeftClip/TopClip are not 0 (e.g sprite viewer)
 			//  Bottom/right part of the picture were not getting updated
-			Bounds = viewer.Bounds.Inflate(1).Translate(new Vector(viewer.LeftClipSize*viewer.Zoom, viewer.TopClipSize*viewer.Zoom)) * LayoutHelper.GetLayoutScale(viewer);
+			double scale = LayoutHelper.GetLayoutScale(viewer);
+			Bounds = (viewer.Bounds * scale).Inflate(1 * scale).Translate(new Vector(viewer.LeftClipSize * viewer.Zoom, viewer.TopClipSize * viewer.Zoom));
 			_source = (DynamicBitmap)viewer.Source;
 			_zoom = viewer.Zoom;
 			using(var lockedBuffer = ((WriteableBitmap)_source).Lock()) {

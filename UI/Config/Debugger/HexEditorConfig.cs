@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Text.Json.Serialization;
 using System.Threading.Tasks;
 using System.Xml;
 using System.Xml.Serialization;
@@ -83,6 +84,11 @@ namespace Mesen.Config
 		[Reactive] public bool Highlight { get; set; }
 		[Reactive] public UInt32 ColorCode { get; set; }
 
-		public Color Color => Color.FromUInt32(ColorCode);
+		[JsonIgnore]
+		public Color Color
+		{
+			get { return Color.FromUInt32(ColorCode); }
+			set { ColorCode = value.ToUInt32(); }
+		}
 	}
 }

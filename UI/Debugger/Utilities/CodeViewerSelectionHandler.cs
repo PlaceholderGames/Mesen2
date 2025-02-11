@@ -9,7 +9,7 @@ using System;
 
 namespace Mesen.Debugger.Utilities
 {
-	public class CodeViewerSelectionHandler
+	public class CodeViewerSelectionHandler : IDisposable
 	{
 		private DisassemblyViewer _viewer;
 		private ISelectableModel _model;
@@ -19,6 +19,7 @@ namespace Mesen.Debugger.Utilities
 		private bool _marginClicked = false;
 		private bool _allowMarginClick = false;
 		private Func<int, int, int> _getRowAddress;
+		private double _scrollAccumulator = 0.0;
 
 		public CodeSegmentInfo? MouseOverSegment { get; private set; }
 		public bool IsMarginClick => _marginClicked;
@@ -35,6 +36,15 @@ namespace Mesen.Debugger.Utilities
 			_viewer.CodePointerMoved += Viewer_CodePointerMoved;
 			_viewer.PointerWheelChanged += Viewer_PointerWheelChanged;
 			_viewer.KeyDown += Viewer_KeyDown;
+		}
+
+		public void Dispose()
+		{
+			_viewer.PointerExited -= Viewer_PointerExited;
+			_viewer.RowClicked -= Viewer_RowClicked;
+			_viewer.CodePointerMoved -= Viewer_CodePointerMoved;
+			_viewer.PointerWheelChanged -= Viewer_PointerWheelChanged;
+			_viewer.KeyDown -= Viewer_KeyDown;
 		}
 
 		private void Viewer_PointerExited(object? sender, PointerEventArgs e)
@@ -56,20 +66,28 @@ namespace Mesen.Debugger.Utilities
 		{
 			_marginClicked = e.MarginClicked;
 
-			if(e.Properties.IsLeftButtonPressed) {
+			if(e.Properties.IsLeftButtonPressed || e.Properties.IsMiddleButtonPressed) {
 				if(_marginClicked && _allowMarginClick) {
 					CpuType cpuType = e.CodeLineData.CpuType;
 					if(e.CodeLineData.AbsoluteAddress.Address >= 0) {
-						BreakpointManager.ToggleBreakpoint(e.CodeLineData.AbsoluteAddress, cpuType);
+						if(e.Properties.IsMiddleButtonPressed) {
+							BreakpointManager.ToggleForbidBreakpoint(e.CodeLineData.AbsoluteAddress, cpuType);
+						} else {
+							BreakpointManager.ToggleBreakpoint(e.CodeLineData.AbsoluteAddress, cpuType);
+						}
 					} else if(e.CodeLineData.Address >= 0) {
 						AddressInfo relAddress = new AddressInfo() {
 							Address = e.CodeLineData.Address,
 							Type = cpuType.ToMemoryType()
 						};
 						AddressInfo absAddress = DebugApi.GetAbsoluteAddress(relAddress);
-						BreakpointManager.ToggleBreakpoint(absAddress.Address < 0 ? relAddress : absAddress, cpuType);
+						if(e.Properties.IsMiddleButtonPressed) {
+							BreakpointManager.ToggleForbidBreakpoint(absAddress.Address < 0 ? relAddress : absAddress, cpuType);
+						} else {
+							BreakpointManager.ToggleBreakpoint(absAddress.Address < 0 ? relAddress : absAddress, cpuType);
+						}
 					}
-				} else {
+				} else if(e.Properties.IsLeftButtonPressed) {
 					if(e.PointerEvent.KeyModifiers.HasFlag(KeyModifiers.Shift)) {
 						_model.ResizeSelectionTo(GetAddress(e));
 					} else {
@@ -96,6 +114,16 @@ namespace Mesen.Debugger.Utilities
 			if(e.CodeSegment != null && e.Data != null) {
 				_mouseOverCodeLocation = CodeTooltipHelper.GetLocation(e.Data.CpuType, e.CodeSegment);
 				tooltip = CodeTooltipHelper.GetTooltip(e.Data.CpuType, e.CodeSegment);
+				if(tooltip == null && e.Fragment != null && !string.IsNullOrWhiteSpace(e.Fragment.Text)) {
+					//No tooltip was found, try again using the word under the mouse cursor
+					//This is only useful for source view, since the syntax doesn't always
+					//match the format expected by the color highlighting logic, etc.
+					LocationInfo? codeLoc = CodeTooltipHelper.GetLocation(e.Data.CpuType, new CodeSegmentInfo(e.Fragment.Text, CodeSegmentType.Label, default, e.Data));
+					if(codeLoc != null && (codeLoc.RelAddress?.Address >= 0 || codeLoc.AbsAddress?.Address >= 0 || codeLoc.Label != null || codeLoc.Symbol != null)) {
+						tooltip = CodeTooltipHelper.GetCodeAddressTooltip(e.Data.CpuType, codeLoc, !codeLoc.RelAddress.HasValue || codeLoc.RelAddress?.Address < 0);
+					}
+				}
+
 				if(tooltip != null) {
 					TooltipHelper.ShowTooltip(_viewer, tooltip, 15);
 				}
@@ -114,7 +142,9 @@ namespace Mesen.Debugger.Utilities
 
 		public void Viewer_PointerWheelChanged(object? sender, PointerWheelEventArgs e)
 		{
-			_model.Scroll((int)(-e.Delta.Y * 3));
+			_scrollAccumulator += -e.GetDeltaY() * 3;
+			_model.Scroll((int) _scrollAccumulator);
+			_scrollAccumulator -= (int) _scrollAccumulator;
 		}
 
 		private void Viewer_KeyDown(object? sender, KeyEventArgs e)

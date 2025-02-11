@@ -37,6 +37,8 @@
 #include "Gameboy/Gameboy.h"
 #include "PCE/PceConsole.h"
 #include "SMS/SmsConsole.h"
+#include "GBA/GbaConsole.h"
+#include "WS/WsConsole.h"
 #include "Debugger/Debugger.h"
 #include "Debugger/BaseEventManager.h"
 #include "Debugger/DebugTypes.h"
@@ -305,7 +307,7 @@ void Emulator::Stop(bool sendNotification, bool preventRecentGameSave, bool save
 		_console.reset();
 	}
 
-	_soundMixer->StopAudio(true);
+	OnBeforePause(true);
 
 	if(sendNotification) {
 		_notificationManager->SendNotification(ConsoleNotificationType::EmulationStopped);
@@ -324,6 +326,7 @@ void Emulator::Reset()
 	_systemActionManager->ResetState();
 
 	_console->GetControlManager()->UpdateInputState();
+	_console->GetControlManager()->ResetLagCounter();
 
 	_videoRenderer->ClearFrame();
 
@@ -408,6 +411,8 @@ bool Emulator::InternalLoadRom(VirtualFile romFile, VirtualFile patchFile, bool 
 		//Make sure the battery is saved to disk before we load another game (or reload the same game)
 		_console->SaveBattery();
 	}
+
+	_soundMixer->StopAudio();
 
 	if(!forPowerCycle) {
 		_movieManager->Stop();
@@ -552,6 +557,8 @@ void Emulator::TryLoadRom(VirtualFile& romFile, LoadRomResult& result, unique_pt
 	TryLoadRom<Gameboy>(romFile, result, console, useFileSignature);
 	TryLoadRom<PceConsole>(romFile, result, console, useFileSignature);
 	TryLoadRom<SmsConsole>(romFile, result, console, useFileSignature);
+	TryLoadRom<GbaConsole>(romFile, result, console, useFileSignature);
+	TryLoadRom<WsConsole>(romFile, result, console, useFileSignature);
 }
 
 template<typename T>
@@ -792,12 +799,20 @@ bool Emulator::IsPaused()
 	}
 }
 
+void Emulator::OnBeforePause(bool clearAudioBuffer)
+{
+	//Prevent audio from looping endlessly while game is paused
+	_soundMixer->StopAudio(clearAudioBuffer);
+
+	//Stop force feedback
+	KeyManager::SetForceFeedback(0);
+}
+
 void Emulator::WaitForPauseEnd()
 {
 	_notificationManager->SendNotification(ConsoleNotificationType::GamePaused);
 
-	//Prevent audio from looping endlessly while game is paused
-	_soundMixer->StopAudio();
+	OnBeforePause(false);
 	_runLock.Release();
 
 	PlatformUtilities::EnableScreensaver();
@@ -896,11 +911,11 @@ void Emulator::Serialize(ostream& out, bool includeSettings, int compressionLeve
 	s.SaveTo(out, compressionLevel);
 }
 
-bool Emulator::Deserialize(istream& in, uint32_t fileFormatVersion, bool includeSettings, optional<ConsoleType> srcConsoleType)
+DeserializeResult Emulator::Deserialize(istream& in, uint32_t fileFormatVersion, bool includeSettings, optional<ConsoleType> srcConsoleType, bool sendNotification)
 {
 	Serializer s(fileFormatVersion, false);
 	if(!s.LoadFrom(in)) {
-		return false;
+		return DeserializeResult::InvalidFile;
 	}
 
 	if(includeSettings) {
@@ -912,7 +927,7 @@ bool Emulator::Deserialize(istream& in, uint32_t fileFormatVersion, bool include
 		SaveStateCompatInfo compatInfo = _console->ValidateSaveStateCompatibility(srcConsoleType.value());
 		if(!compatInfo.IsCompatible) {
 			MessageManager::DisplayMessage("SaveStates", "SaveStateWrongSystem");
-			return false;
+			return DeserializeResult::SpecificError;
 		}
 
 		s.RemoveKeys(compatInfo.FieldsToRemove);
@@ -925,20 +940,33 @@ bool Emulator::Deserialize(istream& in, uint32_t fileFormatVersion, bool include
 
 		if(!s.IsValid()) {
 			MessageManager::DisplayMessage("SaveStates", "SaveStateWrongSystem");
-			return false;
+			return DeserializeResult::SpecificError;
 		}
 	}
 
 	s.Stream(_console, "");
-	
-	_notificationManager->SendNotification(ConsoleNotificationType::StateLoaded);
-	return true;
+	if(s.HasError()) {
+		return DeserializeResult::SpecificError;
+	}
+
+	if(sendNotification) {
+		_notificationManager->SendNotification(ConsoleNotificationType::StateLoaded);
+	}
+	return DeserializeResult::Success;
 }
 
 BaseVideoFilter* Emulator::GetVideoFilter(bool getDefaultFilter)
 {
 	shared_ptr<IConsole> console = GetConsole();
 	return console ? console->GetVideoFilter(getDefaultFilter) : new SnesDefaultVideoFilter(this);
+}
+
+void Emulator::GetScreenRotationOverride(uint32_t& rotation)
+{
+	shared_ptr<IConsole> console = GetConsole();
+	if(console) {
+		console->GetScreenRotationOverride(rotation);
+	}
 }
 
 void Emulator::InputBarcode(uint64_t barcode, uint32_t digitCount)
@@ -1059,8 +1087,14 @@ bool Emulator::IsEmulationThread()
 
 void Emulator::SetStopCode(int32_t stopCode)
 {
+	if(_stopCode != 0) {
+		//If a non-0 code was already set, keep the previous value
+		return;
+	}
+
 	_stopCode = stopCode;
-	if(!_stopFlag) {
+	if(!_stopFlag && !_stopRequested) {
+		_stopRequested = true;
 		thread stopEmuTask([this]() {
 			Stop(true);
 		});

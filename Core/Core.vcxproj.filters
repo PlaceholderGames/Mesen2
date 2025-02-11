@@ -175,12 +175,6 @@
     <ClInclude Include="Gameboy\GameboyHeader.h">
       <Filter>Gameboy</Filter>
     </ClInclude>
-    <ClCompile Include="Gameboy\APU\GbApu.cpp">
-      <Filter>Gameboy</Filter>
-    </ClCompile>
-    <ClInclude Include="Gameboy\APU\GbApu.h">
-      <Filter>Gameboy</Filter>
-    </ClInclude>
     <ClInclude Include="Gameboy\GbBootRom.h">
       <Filter>Gameboy</Filter>
     </ClInclude>
@@ -220,12 +214,6 @@
     <ClInclude Include="Gameboy\GbMemoryManager.h">
       <Filter>Gameboy</Filter>
     </ClInclude>
-    <ClCompile Include="Gameboy\APU\GbNoiseChannel.cpp">
-      <Filter>Gameboy</Filter>
-    </ClCompile>
-    <ClInclude Include="Gameboy\APU\GbNoiseChannel.h">
-      <Filter>Gameboy</Filter>
-    </ClInclude>
     <ClCompile Include="Gameboy\GbPpu.cpp">
       <Filter>Gameboy</Filter>
     </ClCompile>
@@ -235,12 +223,6 @@
     <ClInclude Include="Gameboy\GbsHeader.h">
       <Filter>Gameboy</Filter>
     </ClInclude>
-    <ClCompile Include="Gameboy\APU\GbSquareChannel.cpp">
-      <Filter>Gameboy</Filter>
-    </ClCompile>
-    <ClInclude Include="Gameboy\APU\GbSquareChannel.h">
-      <Filter>Gameboy</Filter>
-    </ClInclude>
     <ClCompile Include="Gameboy\GbTimer.cpp">
       <Filter>Gameboy</Filter>
     </ClCompile>
@@ -248,12 +230,6 @@
       <Filter>Gameboy</Filter>
     </ClInclude>
     <ClInclude Include="Gameboy\GbTypes.h">
-      <Filter>Gameboy</Filter>
-    </ClInclude>
-    <ClCompile Include="Gameboy\APU\GbWaveChannel.cpp">
-      <Filter>Gameboy</Filter>
-    </ClCompile>
-    <ClInclude Include="Gameboy\APU\GbWaveChannel.h">
       <Filter>Gameboy</Filter>
     </ClInclude>
     <ClCompile Include="NES\BaseMapper.cpp">
@@ -1045,6 +1021,9 @@
     <ClInclude Include="Shared\Interfaces\IMessageManager.h">
       <Filter>Shared\Interfaces</Filter>
     </ClInclude>
+    <ClInclude Include="Shared\Interfaces\IMouseManager.h">
+      <Filter>Shared\Interfaces</Filter>
+    </ClInclude>
     <ClInclude Include="Shared\Interfaces\INotificationListener.h">
       <Filter>Shared\Interfaces</Filter>
     </ClInclude>
@@ -1659,20 +1638,8 @@
     <ClInclude Include="PCE\PcePsgChannel.h">
       <Filter>PCE</Filter>
     </ClInclude>
-    <ClInclude Include="PCE\CdRom\PceCdRom.h">
-      <Filter>PCE</Filter>
-    </ClInclude>
-    <ClInclude Include="PCE\CdRom\PceScsiBus.h">
-      <Filter>PCE</Filter>
-    </ClInclude>
-    <ClInclude Include="PCE\CdRom\PceAdpcm.h">
-      <Filter>PCE</Filter>
-    </ClInclude>
     <ClInclude Include="Shared\CdReader.h">
       <Filter>Shared</Filter>
-    </ClInclude>
-    <ClInclude Include="PCE\CdRom\PceCdAudioPlayer.h">
-      <Filter>PCE</Filter>
     </ClInclude>
     <ClInclude Include="PCE\Input\PceController.h">
       <Filter>PCE\Input</Filter>
@@ -1696,9 +1663,6 @@
       <Filter>PCE</Filter>
     </ClInclude>
     <ClInclude Include="PCE\IPceMapper.h">
-      <Filter>PCE</Filter>
-    </ClInclude>
-    <ClInclude Include="PCE\CdRom\PceArcadeCard.h">
       <Filter>PCE</Filter>
     </ClInclude>
     <ClInclude Include="PCE\Debugger\PceAssembler.h">
@@ -2556,9 +2520,6 @@
     <ClInclude Include="Shared\HistoryViewer.h">
       <Filter>Shared</Filter>
     </ClInclude>
-    <ClInclude Include="PCE\CdRom\PceAudioFader.h">
-      <Filter>PCE</Filter>
-    </ClInclude>
     <ClInclude Include="NES\Mappers\Mmc3Variants\Sachen9602.h">
       <Filter>NES\Mappers\Mmc3Variants</Filter>
     </ClInclude>
@@ -2718,6 +2679,300 @@
     <ClInclude Include="SMS\Carts\SmsNemesisCart.h">
       <Filter>SMS\Carts</Filter>
     </ClInclude>
+    <ClInclude Include="PCE\CdRom\PceAdpcm.h">
+      <Filter>PCE\CdRom</Filter>
+    </ClInclude>
+    <ClInclude Include="PCE\CdRom\PceArcadeCard.h">
+      <Filter>PCE\CdRom</Filter>
+    </ClInclude>
+    <ClInclude Include="PCE\CdRom\PceAudioFader.h">
+      <Filter>PCE\CdRom</Filter>
+    </ClInclude>
+    <ClInclude Include="PCE\CdRom\PceCdAudioPlayer.h">
+      <Filter>PCE\CdRom</Filter>
+    </ClInclude>
+    <ClInclude Include="PCE\CdRom\PceCdRom.h">
+      <Filter>PCE\CdRom</Filter>
+    </ClInclude>
+    <ClInclude Include="PCE\CdRom\PceCdSeekDelay.h">
+      <Filter>PCE\CdRom</Filter>
+    </ClInclude>
+    <ClInclude Include="PCE\CdRom\PceScsiBus.h">
+      <Filter>PCE\CdRom</Filter>
+    </ClInclude>
+    <ClInclude Include="Gameboy\APU\GbApu.h">
+      <Filter>Gameboy\APU</Filter>
+    </ClInclude>
+    <ClInclude Include="Gameboy\APU\GbChannelDac.h">
+      <Filter>Gameboy\APU</Filter>
+    </ClInclude>
+    <ClInclude Include="Gameboy\APU\GbNoiseChannel.h">
+      <Filter>Gameboy\APU</Filter>
+    </ClInclude>
+    <ClInclude Include="Gameboy\APU\GbSquareChannel.h">
+      <Filter>Gameboy\APU</Filter>
+    </ClInclude>
+    <ClInclude Include="Gameboy\APU\GbWaveChannel.h">
+      <Filter>Gameboy\APU</Filter>
+    </ClInclude>
+    <ClInclude Include="Gameboy\APU\GbEnvelope.h">
+      <Filter>Gameboy\APU</Filter>
+    </ClInclude>
+    <ClInclude Include="GBA\GbaConsole.h">
+      <Filter>GBA</Filter>
+    </ClInclude>
+    <ClInclude Include="GBA\Debugger\DummyGbaCpu.h">
+      <Filter>GBA\Debugger</Filter>
+    </ClInclude>
+    <ClInclude Include="GBA\Debugger\GbaDebugger.h">
+      <Filter>GBA\Debugger</Filter>
+    </ClInclude>
+    <ClInclude Include="GBA\Debugger\GbaDisUtils.h">
+      <Filter>GBA\Debugger</Filter>
+    </ClInclude>
+    <ClInclude Include="GBA\Debugger\GbaEventManager.h">
+      <Filter>GBA\Debugger</Filter>
+    </ClInclude>
+    <ClInclude Include="GBA\Debugger\GbaPpuTools.h">
+      <Filter>GBA\Debugger</Filter>
+    </ClInclude>
+    <ClInclude Include="GBA\Debugger\GbaTraceLogger.h">
+      <Filter>GBA\Debugger</Filter>
+    </ClInclude>
+    <ClInclude Include="GBA\GbaCpu.h">
+      <Filter>GBA</Filter>
+    </ClInclude>
+    <ClInclude Include="GBA\GbaTypes.h">
+      <Filter>GBA</Filter>
+    </ClInclude>
+    <ClInclude Include="GBA\GbaMemoryManager.h">
+      <Filter>GBA</Filter>
+    </ClInclude>
+    <ClInclude Include="GBA\GbaControlManager.h">
+      <Filter>GBA</Filter>
+    </ClInclude>
+    <ClInclude Include="GBA\GbaDefaultVideoFilter.h">
+      <Filter>GBA</Filter>
+    </ClInclude>
+    <ClInclude Include="GBA\GbaPpu.h">
+      <Filter>GBA</Filter>
+    </ClInclude>
+    <ClInclude Include="GBA\Debugger\GbaAssembler.h">
+      <Filter>GBA\Debugger</Filter>
+    </ClInclude>
+    <ClInclude Include="GBA\GbaDmaController.h">
+      <Filter>GBA</Filter>
+    </ClInclude>
+    <ClInclude Include="GBA\Input\GbaController.h">
+      <Filter>GBA\Input</Filter>
+    </ClInclude>
+    <ClInclude Include="GBA\GbaTimer.h">
+      <Filter>GBA</Filter>
+    </ClInclude>
+    <ClInclude Include="GBA\APU\GbaApu.h">
+      <Filter>GBA\APU</Filter>
+    </ClInclude>
+    <ClInclude Include="GBA\Cart\GbaCart.h">
+      <Filter>GBA\Cart</Filter>
+    </ClInclude>
+    <ClInclude Include="GBA\Cart\GbaEeprom.h">
+      <Filter>GBA\Cart</Filter>
+    </ClInclude>
+    <ClInclude Include="GBA\Cart\GbaFlash.h">
+      <Filter>GBA\Cart</Filter>
+    </ClInclude>
+    <ClInclude Include="GBA\GbaSerial.h">
+      <Filter>GBA</Filter>
+    </ClInclude>
+    <ClInclude Include="GBA\APU\GbaNoiseChannel.h">
+      <Filter>GBA\APU</Filter>
+    </ClInclude>
+    <ClInclude Include="GBA\APU\GbaSquareChannel.h">
+      <Filter>GBA\APU</Filter>
+    </ClInclude>
+    <ClInclude Include="GBA\APU\GbaWaveChannel.h">
+      <Filter>GBA\APU</Filter>
+    </ClInclude>
+    <ClInclude Include="GBA\APU\GbaEnvelope.h">
+      <Filter>GBA\APU</Filter>
+    </ClInclude>
+    <ClInclude Include="GBA\APU\GbaApuFifo.h">
+      <Filter>GBA\APU</Filter>
+    </ClInclude>
+    <ClInclude Include="GBA\GbaRomPrefetch.h">
+      <Filter>GBA</Filter>
+    </ClInclude>
+    <ClInclude Include="Shared\Video\GenericNtscFilter.h">
+      <Filter>Shared\Video</Filter>
+    </ClInclude>
+    <ClInclude Include="GBA\Debugger\GbaCodeDataLogger.h">
+      <Filter>GBA\Debugger</Filter>
+    </ClInclude>
+    <ClInclude Include="GBA\Debugger\MgbaLogHandler.h">
+      <Filter>GBA\Debugger</Filter>
+    </ClInclude>
+    <ClInclude Include="Gameboy\GbxFooter.h">
+      <Filter>Gameboy</Filter>
+    </ClInclude>
+    <ClInclude Include="Gameboy\Carts\GbWisdomTree.h">
+      <Filter>Gameboy\Carts</Filter>
+    </ClInclude>
+    <ClInclude Include="Gameboy\Carts\Eeprom93Lc56.h">
+      <Filter>Gameboy\Carts</Filter>
+    </ClInclude>
+    <ClInclude Include="Gameboy\Carts\GbMbc7Accelerometer.h">
+      <Filter>Gameboy\Carts</Filter>
+    </ClInclude>
+    <ClInclude Include="GBA\Cart\GbaTiltSensor.h">
+      <Filter>GBA\Cart</Filter>
+    </ClInclude>
+    <ClInclude Include="GBA\Cart\GbaRtc.h">
+      <Filter>GBA\Cart</Filter>
+    </ClInclude>
+    <ClInclude Include="GBA\Cart\GbaGpio.h">
+      <Filter>GBA\Cart</Filter>
+    </ClInclude>
+    <ClInclude Include="Gameboy\Carts\GbMmm01.h">
+      <Filter>Gameboy\Carts</Filter>
+    </ClInclude>
+    <ClInclude Include="Gameboy\Carts\GbM161.h">
+      <Filter>Gameboy\Carts</Filter>
+    </ClInclude>
+    <ClInclude Include="SMS\Input\ColecoVisionController.h">
+      <Filter>SMS\Input</Filter>
+    </ClInclude>
+    <ClInclude Include="WS\WsTypes.h">
+      <Filter>WS</Filter>
+    </ClInclude>
+    <ClInclude Include="WS\WsCpu.h">
+      <Filter>WS</Filter>
+    </ClInclude>
+    <ClInclude Include="WS\WsConsole.h">
+      <Filter>WS</Filter>
+    </ClInclude>
+    <ClInclude Include="WS\WsMemoryManager.h">
+      <Filter>WS</Filter>
+    </ClInclude>
+    <ClInclude Include="WS\WsControlManager.h">
+      <Filter>WS</Filter>
+    </ClInclude>
+    <ClInclude Include="WS\WsDefaultVideoFilter.h">
+      <Filter>WS</Filter>
+    </ClInclude>
+    <ClInclude Include="WS\Debugger\WsDebugger.h">
+      <Filter>WS\Debugger</Filter>
+    </ClInclude>
+    <ClInclude Include="WS\Debugger\WsAssembler.h">
+      <Filter>WS\Debugger</Filter>
+    </ClInclude>
+    <ClInclude Include="WS\Debugger\WsDisUtils.h">
+      <Filter>WS\Debugger</Filter>
+    </ClInclude>
+    <ClInclude Include="WS\Debugger\WsEventManager.h">
+      <Filter>WS\Debugger</Filter>
+    </ClInclude>
+    <ClInclude Include="WS\Debugger\WsPpuTools.h">
+      <Filter>WS\Debugger</Filter>
+    </ClInclude>
+    <ClInclude Include="WS\Debugger\WsTraceLogger.h">
+      <Filter>WS\Debugger</Filter>
+    </ClInclude>
+    <ClInclude Include="WS\WsPpu.h">
+      <Filter>WS</Filter>
+    </ClInclude>
+    <ClInclude Include="WS\WsController.h">
+      <Filter>WS</Filter>
+    </ClInclude>
+    <ClInclude Include="WS\Carts\WsCart.h">
+      <Filter>WS\Carts</Filter>
+    </ClInclude>
+    <ClInclude Include="WS\WsTimer.h">
+      <Filter>WS</Filter>
+    </ClInclude>
+    <ClInclude Include="WS\WsDmaController.h">
+      <Filter>WS</Filter>
+    </ClInclude>
+    <ClInclude Include="WS\WsEeprom.h">
+      <Filter>WS</Filter>
+    </ClInclude>
+    <ClInclude Include="WS\WsCpuPrefetch.h">
+      <Filter>WS</Filter>
+    </ClInclude>
+    <ClInclude Include="WS\APU\WsApuCh1.h">
+      <Filter>WS\APU</Filter>
+    </ClInclude>
+    <ClInclude Include="WS\APU\WsApuCh2.h">
+      <Filter>WS\APU</Filter>
+    </ClInclude>
+    <ClInclude Include="WS\APU\WsApuCh3.h">
+      <Filter>WS\APU</Filter>
+    </ClInclude>
+    <ClInclude Include="WS\APU\WsApuCh4.h">
+      <Filter>WS\APU</Filter>
+    </ClInclude>
+    <ClInclude Include="WS\APU\WsApu.h">
+      <Filter>WS\APU</Filter>
+    </ClInclude>
+    <ClInclude Include="WS\APU\WsHyperVoice.h">
+      <Filter>WS\APU</Filter>
+    </ClInclude>
+    <ClInclude Include="WS\Debugger\DummyWsCpu.h">
+      <Filter>WS\Debugger</Filter>
+    </ClInclude>
+    <ClInclude Include="WS\WsSerial.h">
+      <Filter>WS</Filter>
+    </ClInclude>
+    <ClInclude Include="NES\Epsm.h">
+      <Filter>NES</Filter>
+    </ClInclude>
+    <ClInclude Include="NES\OpnInterface.h">
+      <Filter>NES</Filter>
+    </ClInclude>
+    <ClInclude Include="NES\Mappers\Homebrew\Rainbow.h">
+      <Filter>NES\Mappers\Homebrew</Filter>
+    </ClInclude>
+    <ClInclude Include="NES\Mappers\Homebrew\RainbowAudio.h">
+      <Filter>NES\Mappers\Homebrew</Filter>
+    </ClInclude>
+    <ClInclude Include="NES\Debugger\IExtModeMapperDebug.h">
+      <Filter>NES\Mappers\Homebrew</Filter>
+    </ClInclude>
+    <ClInclude Include="NES\Mappers\Homebrew\FlashS29.h">
+      <Filter>NES\Mappers\Homebrew</Filter>
+    </ClInclude>
+    <ClInclude Include="GBA\GbaCpuMultiply.h">
+      <Filter>GBA</Filter>
+    </ClInclude>
+    <ClInclude Include="SNES\Coprocessors\ST018\St018.h">
+      <Filter>SNES\Coprocessors\ST018</Filter>
+    </ClInclude>
+    <ClInclude Include="SNES\Coprocessors\ST018\St018Types.h">
+      <Filter>SNES\Coprocessors\ST018</Filter>
+    </ClInclude>
+    <ClInclude Include="SNES\Coprocessors\ST018\ArmV3Cpu.h">
+      <Filter>SNES\Coprocessors\ST018</Filter>
+    </ClInclude>
+    <ClInclude Include="SNES\Coprocessors\ST018\ArmV3Types.h">
+      <Filter>SNES\Coprocessors\ST018</Filter>
+    </ClInclude>
+    <ClInclude Include="SNES\Debugger\St018Debugger.h">
+      <Filter>SNES\Debugger</Filter>
+    </ClInclude>
+    <ClInclude Include="SNES\Debugger\TraceLogger\St018TraceLogger.h">
+      <Filter>SNES\Debugger\TraceLogger</Filter>
+    </ClInclude>
+    <ClInclude Include="SNES\Debugger\DummyArmV3Cpu.h">
+      <Filter>SNES\Debugger</Filter>
+    </ClInclude>
+    <ClInclude Include="SNES\Debugger\St018DisUtils.h">
+      <Filter>SNES\Debugger</Filter>
+    </ClInclude>
+    <ClInclude Include="Shared\ArmEnums.h">
+      <Filter>Shared</Filter>
+    </ClInclude>
+    <ClInclude Include="SNES\Coprocessors\SufamiTurbo\SufamiTurbo.h">
+      <Filter>SNES\Coprocessors\SufamiTurbo</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Shared\Video\RotateFilter.cpp">
@@ -2774,20 +3029,8 @@
     <ClCompile Include="PCE\PcePsgChannel.cpp">
       <Filter>PCE</Filter>
     </ClCompile>
-    <ClCompile Include="PCE\CdRom\PceCdRom.cpp">
-      <Filter>PCE</Filter>
-    </ClCompile>
-    <ClCompile Include="PCE\CdRom\PceScsiBus.cpp">
-      <Filter>PCE</Filter>
-    </ClCompile>
-    <ClCompile Include="PCE\CdRom\PceAdpcm.cpp">
-      <Filter>PCE</Filter>
-    </ClCompile>
     <ClCompile Include="Shared\CdReader.cpp">
       <Filter>Shared</Filter>
-    </ClCompile>
-    <ClCompile Include="PCE\CdRom\PceCdAudioPlayer.cpp">
-      <Filter>PCE</Filter>
     </ClCompile>
     <ClCompile Include="PCE\Input\PceTurboTap.cpp">
       <Filter>PCE\Input</Filter>
@@ -2796,9 +3039,6 @@
       <Filter>PCE</Filter>
     </ClCompile>
     <ClCompile Include="PCE\PceVce.cpp">
-      <Filter>PCE</Filter>
-    </ClCompile>
-    <ClCompile Include="PCE\CdRom\PceArcadeCard.cpp">
       <Filter>PCE</Filter>
     </ClCompile>
     <ClCompile Include="PCE\Debugger\PceAssembler.cpp">
@@ -2827,9 +3067,6 @@
     </ClCompile>
     <ClCompile Include="Shared\HistoryViewer.cpp">
       <Filter>Shared</Filter>
-    </ClCompile>
-    <ClCompile Include="PCE\CdRom\PceAudioFader.cpp">
-      <Filter>PCE</Filter>
     </ClCompile>
     <ClCompile Include="PCE\PceMemoryManager.cpp">
       <Filter>PCE</Filter>
@@ -2908,6 +3145,195 @@
     </ClCompile>
     <ClCompile Include="SMS\SmsBiosMapper.cpp">
       <Filter>SMS</Filter>
+    </ClCompile>
+    <ClCompile Include="PCE\CdRom\PceAdpcm.cpp">
+      <Filter>PCE\CdRom</Filter>
+    </ClCompile>
+    <ClCompile Include="PCE\CdRom\PceArcadeCard.cpp">
+      <Filter>PCE\CdRom</Filter>
+    </ClCompile>
+    <ClCompile Include="PCE\CdRom\PceAudioFader.cpp">
+      <Filter>PCE\CdRom</Filter>
+    </ClCompile>
+    <ClCompile Include="PCE\CdRom\PceCdAudioPlayer.cpp">
+      <Filter>PCE\CdRom</Filter>
+    </ClCompile>
+    <ClCompile Include="PCE\CdRom\PceCdRom.cpp">
+      <Filter>PCE\CdRom</Filter>
+    </ClCompile>
+    <ClCompile Include="PCE\CdRom\PceScsiBus.cpp">
+      <Filter>PCE\CdRom</Filter>
+    </ClCompile>
+    <ClCompile Include="Gameboy\APU\GbApu.cpp">
+      <Filter>Gameboy\APU</Filter>
+    </ClCompile>
+    <ClCompile Include="Gameboy\APU\GbNoiseChannel.cpp">
+      <Filter>Gameboy\APU</Filter>
+    </ClCompile>
+    <ClCompile Include="Gameboy\APU\GbSquareChannel.cpp">
+      <Filter>Gameboy\APU</Filter>
+    </ClCompile>
+    <ClCompile Include="Gameboy\APU\GbWaveChannel.cpp">
+      <Filter>Gameboy\APU</Filter>
+    </ClCompile>
+    <ClCompile Include="GBA\GbaConsole.cpp">
+      <Filter>GBA</Filter>
+    </ClCompile>
+    <ClCompile Include="GBA\Debugger\DummyGbaCpu.cpp">
+      <Filter>GBA\Debugger</Filter>
+    </ClCompile>
+    <ClCompile Include="GBA\Debugger\GbaDebugger.cpp">
+      <Filter>GBA\Debugger</Filter>
+    </ClCompile>
+    <ClCompile Include="GBA\Debugger\GbaDisUtils.cpp">
+      <Filter>GBA\Debugger</Filter>
+    </ClCompile>
+    <ClCompile Include="GBA\Debugger\GbaEventManager.cpp">
+      <Filter>GBA\Debugger</Filter>
+    </ClCompile>
+    <ClCompile Include="GBA\Debugger\GbaPpuTools.cpp">
+      <Filter>GBA\Debugger</Filter>
+    </ClCompile>
+    <ClCompile Include="GBA\Debugger\GbaTraceLogger.cpp">
+      <Filter>GBA\Debugger</Filter>
+    </ClCompile>
+    <ClCompile Include="GBA\GbaCpu.cpp">
+      <Filter>GBA</Filter>
+    </ClCompile>
+    <ClCompile Include="GBA\GbaDefaultVideoFilter.cpp">
+      <Filter>GBA</Filter>
+    </ClCompile>
+    <ClCompile Include="Debugger\ExpressionEvaluator.Gba.cpp">
+      <Filter>Debugger</Filter>
+    </ClCompile>
+    <ClCompile Include="GBA\GbaCpu.Arm.cpp">
+      <Filter>GBA</Filter>
+    </ClCompile>
+    <ClCompile Include="GBA\GbaCpu.Thumb.cpp">
+      <Filter>GBA</Filter>
+    </ClCompile>
+    <ClCompile Include="GBA\GbaPpu.cpp">
+      <Filter>GBA</Filter>
+    </ClCompile>
+    <ClCompile Include="GBA\GbaDmaController.cpp">
+      <Filter>GBA</Filter>
+    </ClCompile>
+    <ClCompile Include="GBA\GbaControlManager.cpp">
+      <Filter>GBA</Filter>
+    </ClCompile>
+    <ClCompile Include="GBA\GbaTimer.cpp">
+      <Filter>GBA</Filter>
+    </ClCompile>
+    <ClCompile Include="GBA\APU\GbaApu.cpp">
+      <Filter>GBA\APU</Filter>
+    </ClCompile>
+    <ClCompile Include="GBA\Cart\GbaCart.cpp">
+      <Filter>GBA\Cart</Filter>
+    </ClCompile>
+    <ClCompile Include="GBA\GbaMemoryManager.cpp">
+      <Filter>GBA</Filter>
+    </ClCompile>
+    <ClCompile Include="GBA\APU\GbaNoiseChannel.cpp">
+      <Filter>GBA\APU</Filter>
+    </ClCompile>
+    <ClCompile Include="GBA\APU\GbaSquareChannel.cpp">
+      <Filter>GBA\APU</Filter>
+    </ClCompile>
+    <ClCompile Include="GBA\APU\GbaWaveChannel.cpp">
+      <Filter>GBA\APU</Filter>
+    </ClCompile>
+    <ClCompile Include="GBA\Cart\GbaRtc.cpp">
+      <Filter>GBA\Cart</Filter>
+    </ClCompile>
+    <ClCompile Include="GBA\Cart\GbaGpio.cpp">
+      <Filter>GBA\Cart</Filter>
+    </ClCompile>
+    <ClCompile Include="WS\WsConsole.cpp">
+      <Filter>WS</Filter>
+    </ClCompile>
+    <ClCompile Include="WS\Debugger\WsDebugger.cpp">
+      <Filter>WS\Debugger</Filter>
+    </ClCompile>
+    <ClCompile Include="WS\Debugger\WsDisUtils.cpp">
+      <Filter>WS\Debugger</Filter>
+    </ClCompile>
+    <ClCompile Include="WS\Debugger\WsEventManager.cpp">
+      <Filter>WS\Debugger</Filter>
+    </ClCompile>
+    <ClCompile Include="WS\Debugger\WsPpuTools.cpp">
+      <Filter>WS\Debugger</Filter>
+    </ClCompile>
+    <ClCompile Include="WS\Debugger\WsTraceLogger.cpp">
+      <Filter>WS\Debugger</Filter>
+    </ClCompile>
+    <ClCompile Include="WS\WsCpu.cpp">
+      <Filter>WS</Filter>
+    </ClCompile>
+    <ClCompile Include="Debugger\ExpressionEvaluator.Ws.cpp">
+      <Filter>Debugger</Filter>
+    </ClCompile>
+    <ClCompile Include="WS\WsControlManager.cpp">
+      <Filter>WS</Filter>
+    </ClCompile>
+    <ClCompile Include="WS\WsPpu.cpp">
+      <Filter>WS</Filter>
+    </ClCompile>
+    <ClCompile Include="WS\WsMemoryManager.cpp">
+      <Filter>WS</Filter>
+    </ClCompile>
+    <ClCompile Include="WS\Carts\WsCart.cpp">
+      <Filter>WS\Carts</Filter>
+    </ClCompile>
+    <ClCompile Include="WS\WsTimer.cpp">
+      <Filter>WS</Filter>
+    </ClCompile>
+    <ClCompile Include="WS\WsDmaController.cpp">
+      <Filter>WS</Filter>
+    </ClCompile>
+    <ClCompile Include="WS\WsCpuPrefetch.cpp">
+      <Filter>WS</Filter>
+    </ClCompile>
+    <ClCompile Include="WS\APU\WsApu.cpp">
+      <Filter>WS\APU</Filter>
+    </ClCompile>
+    <ClCompile Include="WS\Debugger\DummyWsCpu.cpp">
+      <Filter>WS\Debugger</Filter>
+    </ClCompile>
+    <ClCompile Include="WS\WsSerial.cpp">
+      <Filter>WS</Filter>
+    </ClCompile>
+    <ClCompile Include="WS\WsDefaultVideoFilter.cpp">
+      <Filter>WS</Filter>
+    </ClCompile>
+    <ClCompile Include="WS\WsEeprom.cpp">
+      <Filter>WS</Filter>
+    </ClCompile>
+    <ClCompile Include="NES\Epsm.cpp">
+      <Filter>NES</Filter>
+    </ClCompile>
+    <ClCompile Include="NES\Mappers\Homebrew\Rainbow.cpp">
+      <Filter>NES\Mappers\Homebrew</Filter>
+    </ClCompile>
+    <ClCompile Include="SNES\Coprocessors\ST018\St018.cpp">
+      <Filter>SNES\Coprocessors\ST018</Filter>
+    </ClCompile>
+    <ClCompile Include="SNES\Coprocessors\ST018\ArmV3Cpu.cpp">
+      <Filter>SNES\Coprocessors\ST018</Filter>
+    </ClCompile>
+    <ClCompile Include="SNES\Debugger\St018Debugger.cpp">
+      <Filter>SNES\Debugger</Filter>
+    </ClCompile>
+    <ClCompile Include="SNES\Debugger\TraceLogger\St018TraceLogger.cpp">
+      <Filter>SNES\Debugger\TraceLogger</Filter>
+    </ClCompile>
+    <ClCompile Include="SNES\Debugger\DummyArmV3Cpu.cpp">
+      <Filter>SNES\Debugger</Filter>
+    </ClCompile>
+    <ClCompile Include="Debugger\ExpressionEvaluator.St018.cpp">
+      <Filter>Debugger</Filter>
+    </ClCompile>
+    <ClCompile Include="SNES\Debugger\St018DisUtils.cpp">
+      <Filter>SNES\Debugger</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -2997,6 +3423,45 @@
     </Filter>
     <Filter Include="Shared\Utilities">
       <UniqueIdentifier>{9c5b1b92-fa62-42bf-9102-9cc5d35262b8}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="PCE\CdRom">
+      <UniqueIdentifier>{d8c09137-ed0d-4674-8017-a1f3be7cf2a6}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Gameboy\APU">
+      <UniqueIdentifier>{2ce2d3b6-58f7-4b68-bf2b-1236e5bbfaed}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="GBA">
+      <UniqueIdentifier>{108b719f-c802-46f9-b986-8c4ec5fa435b}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="GBA\Debugger">
+      <UniqueIdentifier>{7d3eff06-05c9-4bc9-9e23-ae2a82e7d257}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="GBA\Input">
+      <UniqueIdentifier>{a17e421b-59fb-4e80-9f21-ae1bb819812c}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="GBA\APU">
+      <UniqueIdentifier>{6dc9cf91-5871-4abe-8c4f-610f9d6f3eb0}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="GBA\Cart">
+      <UniqueIdentifier>{4cc96bee-c354-4a9b-9947-85959ccc072f}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="WS">
+      <UniqueIdentifier>{8d532045-df57-4c7d-be0b-19680c2c2d10}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="WS\Debugger">
+      <UniqueIdentifier>{14eeda13-2b16-4034-9006-7a7a347f548d}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="WS\Carts">
+      <UniqueIdentifier>{ffbcd5be-271d-4c27-81f4-7684bfb2b8d9}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="WS\APU">
+      <UniqueIdentifier>{e8ed2b40-f0e0-4dc5-89b7-9acc460359c8}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="SNES\Coprocessors\ST018">
+      <UniqueIdentifier>{387c0b44-8063-45e8-a28a-b6d9e27b5a3f}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="SNES\Coprocessors\SufamiTurbo">
+      <UniqueIdentifier>{bfdd4bb9-41c2-4255-a8c3-0176c990cbf3}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
 </Project>

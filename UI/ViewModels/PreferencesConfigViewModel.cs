@@ -1,4 +1,6 @@
-﻿using Avalonia.Controls;
+﻿using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Styling;
 using Mesen.Config;
 using Mesen.Config.Shortcuts;
 using Mesen.Utilities;
@@ -83,6 +85,9 @@ namespace Mesen.ViewModels
 				EmulatorShortcut.IncreaseVolume,
 				EmulatorShortcut.DecreaseVolume,
 
+				EmulatorShortcut.PreviousTrack,
+				EmulatorShortcut.NextTrack,
+
 				EmulatorShortcut.MaxSpeed,
 				EmulatorShortcut.IncreaseSpeed,
 				EmulatorShortcut.DecreaseSpeed,
@@ -155,7 +160,10 @@ namespace Mesen.ViewModels
 				return;
 			}
 
-			AddDisposable(ReactiveHelper.RegisterRecursiveObserver(Config, (s, e) => { Config.ApplyConfig(); }));
+			AddDisposable(ReactiveHelper.RegisterRecursiveObserver(Config, (s, e) => { 
+				Config.ApplyConfig();
+				PreferencesConfig.UpdateTheme();
+			}));
 		}
    }
 }

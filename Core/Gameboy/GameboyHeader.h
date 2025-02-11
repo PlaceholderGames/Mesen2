@@ -25,19 +25,16 @@ struct GameboyHeader
 	uint8_t HeaderChecksum;
 	uint8_t GlobalChecksum[2];
 
-	uint32_t GetPrgRomSize()
-	{
-		if(PrgRomSize < 16) {
-			return 0x8000 << PrgRomSize;
-		}
-		return 0x8000;
-	}
-
 	uint32_t GetCartRamSize()
 	{
 		if(CartType == 5 || CartType == 6) {
 			//MBC2 has 512x4bits of cart ram
 			return 0x200;
+		}
+
+		if(CartType == 0x22) {
+			//MBC7 has a 256-byte eeprom
+			return 0x100;
 		}
 
 		switch(CartRamSize) {

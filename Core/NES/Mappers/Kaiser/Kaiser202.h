@@ -15,6 +15,7 @@ class Kaiser202 : public BaseMapper
 protected:
 	uint16_t GetPrgPageSize() override { return 0x2000; }
 	uint16_t GetChrPageSize() override { return 0x0400; }
+	bool EnableCpuClockHook() override { return true; }
 
 	void InitMapper() override
 	{
@@ -43,6 +44,8 @@ protected:
 
 	void ProcessCpuClock() override
 	{
+		BaseProcessCpuClock();
+
 		if(_irqEnabled) {
 			_irqCounter++;
 			if(_irqCounter == 0xFFFF) {

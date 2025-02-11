@@ -34,6 +34,21 @@ namespace Mesen.Debugger.Utilities
 			}
 		}
 
+		private static string? GetMatchingFile(string ext)
+		{
+			string path = Path.ChangeExtension(_romInfo.RomPath, ext);
+			if(File.Exists(path)) {
+				return path;
+			}
+
+			path = _romInfo.RomPath + "." + ext;
+			if(File.Exists(path)) {
+				return path;
+			}
+
+			return null;
+		}
+
 		[MemberNotNull(nameof(DebugWorkspaceManager._workspace))]
 		public static void Load()
 		{
@@ -49,28 +64,52 @@ namespace Mesen.Debugger.Utilities
 
 			SymbolProvider = null;
 			if(ConfigManager.Config.Debug.Integration.AutoLoadDbgFiles) {
-				string dbgPath = Path.ChangeExtension(_romInfo.RomPath, FileDialogHelper.DbgFileExt);
-				LoadDbgSymbolFile(dbgPath, false);
+				string? dbgPath = GetMatchingFile(FileDialogHelper.DbgFileExt);
+				if(dbgPath != null) {
+					LoadDbgSymbolFile(dbgPath, false);
+				}
 			}
 
 			if(SymbolProvider == null && ConfigManager.Config.Debug.Integration.AutoLoadSymFiles) {
-				string symPath = Path.ChangeExtension(_romInfo.RomPath, FileDialogHelper.SymFileExt);
-				LoadSymFile(symPath, false);
+				string? symPath = GetMatchingFile(FileDialogHelper.SymFileExt);
+				if(symPath != null) {
+					LoadSymFile(symPath, false);
+				}
+			}
+
+			if(SymbolProvider == null && ConfigManager.Config.Debug.Integration.AutoLoadCdbFiles) {
+				string? symPath = GetMatchingFile(FileDialogHelper.CdbFileExt);
+				if(symPath != null) {
+					LoadCdbFile(symPath, false);
+				}
+			}
+
+			if(SymbolProvider == null && ConfigManager.Config.Debug.Integration.AutoLoadElfFiles) {
+				string? symPath = GetMatchingFile(FileDialogHelper.ElfFileExt);
+				if(symPath != null) {
+					LoadElfFile(symPath, false);
+				}
 			}
 
 			if(SymbolProvider == null && ConfigManager.Config.Debug.Integration.AutoLoadMlbFiles) {
-				string mlbPath = Path.ChangeExtension(_romInfo.RomPath, FileDialogHelper.MesenLabelExt);
-				LoadMesenLabelFile(mlbPath, false);
+				string? mlbPath = GetMatchingFile(FileDialogHelper.MesenLabelExt);
+				if(mlbPath != null) {
+					LoadMesenLabelFile(mlbPath, false);
+				}
 			}
 
 			if(SymbolProvider == null && ConfigManager.Config.Debug.Integration.AutoLoadFnsFiles) {
-				string fnsPath = Path.ChangeExtension(_romInfo.RomPath, FileDialogHelper.NesAsmLabelExt);
-				LoadNesAsmLabelFile(fnsPath, false);
+				string? fnsPath = GetMatchingFile(FileDialogHelper.NesAsmLabelExt);
+				if(fnsPath != null) {
+					LoadNesAsmLabelFile(fnsPath, false);
+				}
 			}
 
 			if(ConfigManager.Config.Debug.Integration.AutoLoadCdlFiles) {
-				string cdlPath = Path.ChangeExtension(_romInfo.RomPath, FileDialogHelper.CdlExt);
-				LoadCdlFile(cdlPath);
+				string? cdlPath = GetMatchingFile(FileDialogHelper.CdlExt);
+				if(cdlPath != null) {
+					LoadCdlFile(cdlPath);
+				}
 			}
 			LabelManager.ResumeEvents();
 			SymbolProviderChanged?.Invoke(null, EventArgs.Empty);
@@ -92,11 +131,27 @@ namespace Mesen.Debugger.Utilities
 			}
 		}
 
+		public static void LoadElfFile(string path, bool showResult)
+		{
+			if(File.Exists(path) && Path.GetExtension(path).ToLower() == "." + FileDialogHelper.ElfFileExt) {
+				ResetLabels();
+				ElfImporter.Import(path, showResult, _romInfo.ConsoleType.GetMainCpuType());
+			}
+		}
+
+		public static void LoadCdbFile(string path, bool showResult)
+		{
+			if(File.Exists(path) && Path.GetExtension(path).ToLower() == "." + FileDialogHelper.CdbFileExt) {
+				ResetLabels();
+				SymbolProvider = SdccSymbolImporter.Import(_romInfo.Format, path, showResult);
+			}
+		}
+
 		public static void LoadSymFile(string path, bool showResult)
 		{
 			if(File.Exists(path) && Path.GetExtension(path).ToLower() == "." + FileDialogHelper.SymFileExt) {
 				string symContent = File.ReadAllText(path);
-				if(symContent.Contains("[labels]")) {
+				if(symContent.Contains("[labels]") || symContent.Contains("this file was created with wlalink")) {
 					//Assume WLA-DX symbol files
 					WlaDxImporter? importer = null;
 					switch(_romInfo.ConsoleType) {
@@ -110,6 +165,7 @@ namespace Mesen.Debugger.Utilities
 
 						case ConsoleType.Gameboy: importer = new GbWlaDxImporter(); break;
 						case ConsoleType.PcEngine: importer = new PceWlaDxImporter(); break;
+						case ConsoleType.Sms: importer = new SmsWlaDxImporter(); break;
 					}
 
 					if(importer != null) {
@@ -125,8 +181,12 @@ namespace Mesen.Debugger.Utilities
 							BassLabelFile.Import(path, showResult, CpuType.Gameboy);
 						}
 					} else {
-						if(_romInfo.ConsoleType == ConsoleType.PcEngine && PceasSymbolFile.IsValidFile(symContent)) {
-							PceasSymbolFile.Import(path, showResult);
+						if(_romInfo.ConsoleType == ConsoleType.PcEngine && PceasSymbolImporter.IsValidFile(symContent)) {
+							PceasSymbolImporter importer = new PceasSymbolImporter();
+							importer.Import(path, showResult);
+							SymbolProvider = importer;
+						} else if(_romInfo.ConsoleType == ConsoleType.PcEngine && LegacyPceasSymbolFile.IsValidFile(symContent)) {
+							LegacyPceasSymbolFile.Import(path, showResult);
 						} else {
 							BassLabelFile.Import(path, showResult, _romInfo.ConsoleType.GetMainCpuType());
 						}
@@ -160,12 +220,21 @@ namespace Mesen.Debugger.Utilities
 
 		public static void LoadSupportedFile(string filename, bool showResult)
 		{
+			ISymbolProvider? symbolProvider = SymbolProvider;
+			SymbolProvider = null;
+
 			switch(Path.GetExtension(filename).ToLower().Substring(1)) {
 				case FileDialogHelper.DbgFileExt: LoadDbgSymbolFile(filename, showResult); break;
 				case FileDialogHelper.SymFileExt: LoadSymFile(filename, showResult); break;
+				case FileDialogHelper.CdbFileExt: LoadCdbFile(filename, showResult); break;
+				case FileDialogHelper.ElfFileExt: LoadElfFile(filename, showResult); break;
 				case FileDialogHelper.MesenLabelExt: LoadMesenLabelFile(filename, showResult); break;
 				case FileDialogHelper.NesAsmLabelExt: LoadNesAsmLabelFile(filename, showResult); break;
-				case FileDialogHelper.CdlExt: LoadCdlFile(filename); break;
+				case FileDialogHelper.CdlExt: LoadCdlFile(filename); SymbolProvider = symbolProvider; break;
+			}
+
+			if(SymbolProvider != symbolProvider) {
+				SymbolProviderChanged?.Invoke(null, EventArgs.Empty);
 			}
 		}
 
@@ -174,6 +243,16 @@ namespace Mesen.Debugger.Utilities
 			_workspace?.Save(_path, _romInfo.CpuTypes);
 			if(releaseWorkspace) {
 				_workspace = null;
+			}
+		}
+
+		private static DateTime _previousAutoSave = DateTime.MinValue;
+		public static void AutoSave()
+		{
+			//Automatically save when changing a label/breakpoint/watch to avoid losing progress if a crash occurs
+			if((DateTime.Now - _previousAutoSave).TotalSeconds >= 60) {
+				_workspace?.Save(_path, _romInfo.CpuTypes);
+				_previousAutoSave = DateTime.Now;
 			}
 		}
 	}
@@ -188,7 +267,7 @@ namespace Mesen.Debugger.Utilities
 	public class DebugWorkspace
 	{
 		public Dictionary<CpuType, CpuDebugWorkspace> WorkspaceByCpu { get; set; } = new();
-		public string[] TblMappings = Array.Empty<string>();
+		public string[] TblMappings { get; set; } = Array.Empty<string>();
 
 		public static DebugWorkspace Load(string path)
 		{
@@ -196,7 +275,7 @@ namespace Mesen.Debugger.Utilities
 			if(File.Exists(path)) {
 				try {
 					string fileData = File.ReadAllText(path);
-					dbgWorkspace = JsonSerializer.Deserialize<DebugWorkspace>(fileData, JsonHelper.Options) ?? new DebugWorkspace();
+					dbgWorkspace = (DebugWorkspace?)JsonSerializer.Deserialize(fileData, typeof(DebugWorkspace), MesenSerializerContext.Default) ?? new DebugWorkspace();
 				} catch {
 				}
 			}
@@ -227,7 +306,7 @@ namespace Mesen.Debugger.Utilities
 				WorkspaceByCpu[cpuType] = workspace;
 			}
 
-			FileHelper.WriteAllText(path, JsonSerializer.Serialize(this, typeof(DebugWorkspace), JsonHelper.Options));
+			FileHelper.WriteAllText(path, JsonSerializer.Serialize(this, typeof(DebugWorkspace), MesenSerializerContext.Default));
 		}
 
 		public void Reset()

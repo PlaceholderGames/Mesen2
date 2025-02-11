@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net6.0</TargetFramework>
+    <TargetFramework>net8.0</TargetFramework>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <Nullable>enable</Nullable>
     <GenerateEmbeddedFilesManifest>true</GenerateEmbeddedFilesManifest>
@@ -17,7 +17,11 @@
 		<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
 		<SatelliteResourceLanguages>en-US</SatelliteResourceLanguages>
 		<ApplicationManifest>app.manifest</ApplicationManifest>
+		<IsAotCompatible>true</IsAotCompatible>
+		<JsonSerializerIsReflectionEnabledByDefault>false</JsonSerializerIsReflectionEnabledByDefault>
+		<SuppressTrimAnalysisWarnings>false</SuppressTrimAnalysisWarnings>
 		<AvaloniaNameGeneratorIsEnabled>false</AvaloniaNameGeneratorIsEnabled>
+		<AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
 	</PropertyGroup>
 	<PropertyGroup Condition="'$(RuntimeIdentifier)'=='osx-x64' Or '$(RuntimeIdentifier)'=='osx-arm64' Or '$(RuntimeIdentifier)'=='linux-x64'">
 		<SolutionDir>..</SolutionDir>
@@ -27,7 +31,7 @@
   </PropertyGroup>
 	<PropertyGroup Condition="'$(Configuration)'=='Release'">
 	  <OutputPath>$(SolutionDir)\bin\$(RuntimeIdentifier)\Release\</OutputPath>
-	  <Optimize>False</Optimize>
+	  <Optimize>false</Optimize>
 	  <DefineConstants>DEBUG</DefineConstants>
 	</PropertyGroup>
 	<PropertyGroup Condition="'$(OptimizeUi)'=='true'">
@@ -49,15 +53,18 @@
 	</PropertyGroup>
 	<ItemGroup>
 	  <None Remove="Assets\MsgBoxInfo.png" />
+	  <None Remove="Debugger\Documentation\GbaDocumentation.json" />
 	  <None Remove="Debugger\Documentation\GbDocumentation.json" />
 	  <None Remove="Debugger\Documentation\NesDocumentation.json" />
 	  <None Remove="Debugger\Documentation\PceDocumentation.json" />
 	  <None Remove="Debugger\Documentation\SmsDocumentation.json" />
 	  <None Remove="Debugger\Documentation\SnesDocumentation.json" />
 	  <None Remove="Debugger\Documentation\SpcDocumentation.json" />
+	  <None Remove="Debugger\Documentation\WsDocumentation.json" />
 	  <None Remove="Debugger\HighlightAssembly.xshd" />
 	  <None Remove="Debugger\HighlightLua.xshd" />
 	  <None Remove="Debugger\Utilities\LuaDocumentation.json" />
+	  <None Remove="Debugger\Utilities\LuaScripts\DisplayState.lua" />
 	  <None Remove="Debugger\Utilities\LuaScripts\DrawMode.lua" />
 	  <None Remove="Debugger\Utilities\LuaScripts\Example.lua" />
 	  <None Remove="Debugger\Utilities\LuaScripts\Grid.lua" />
@@ -83,20 +90,33 @@
 	  <None Remove="Styles\StartupStyles.xaml" />
 	  <None Remove="Utilities\DipSwitchDefinitions.xml" />
 	</ItemGroup>
+	<PropertyGroup>
+		<RestoreSources>
+			https://nuget-feed-nightly.avaloniaui.net/v3/index.json;https://api.nuget.org/v3/index.json
+		</RestoreSources>
+	</PropertyGroup>
+	<ItemGroup>
+		<TrimmerRootAssembly Include="Mesen" />
+		<TrimmerRootAssembly Include="AvaloniaEdit" />
+		<TrimmerRootAssembly Include="Avalonia.MarkupExtension" />
+		<TrimmerRootAssembly Include="Dock.Avalonia" />
+		<TrimmerRootAssembly Include="Dock.Model" />
+		<TrimmerRootAssembly Include="Dock.Model.Mvvm" />
+		<TrimmerRootAssembly Include="Dock.Settings" />
+	</ItemGroup>
   <ItemGroup>
-    <PackageReference Include="Avalonia" Version="11.0.5" />
-    <PackageReference Include="Avalonia.AvaloniaEdit" Version="11.0.5" />
-    <PackageReference Include="Avalonia.Desktop" Version="11.0.5" />
-    <PackageReference Include="Avalonia.Diagnostics" Version="11.0.5" />
-    <PackageReference Include="Avalonia.ReactiveUI" Version="11.0.5" />
-    <PackageReference Include="Avalonia.Themes.Fluent" Version="11.0.5" />
-    <PackageReference Include="Dock.Avalonia" Version="11.0.0.2" />
-    <PackageReference Include="Dock.Model.Mvvm" Version="11.0.0.2" />
+    <PackageReference Include="Avalonia" Version="11.3.999-cibuild0054047-alpha" />
+    <PackageReference Include="Avalonia.AvaloniaEdit" Version="11.1.0" />
+    <PackageReference Include="Avalonia.Desktop" Version="11.3.999-cibuild0054047-alpha" />
+    <PackageReference Include="Avalonia.Controls.ColorPicker" Version="11.2.3" />
+    <PackageReference Include="Avalonia.Diagnostics" Version="11.2.3" Condition="'$(OptimizeUi)'!='true'" />
+    <PackageReference Include="Avalonia.ReactiveUI" Version="11.2.3" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.999-cibuild0054047-alpha" />
+    <PackageReference Include="Dock.Avalonia" Version="11.2.0" />
+    <PackageReference Include="Dock.Model.Mvvm" Version="11.2.0" />
     <PackageReference Include="Dotnet.Bundle" Version="*" />
-    <PackageReference Include="Microsoft.Win32.Registry" Version="6.0.0-preview.5.21301.5" />
-    <PackageReference Include="ReactiveUI.Fody" Version="18.4.1" />
-    <PackageReference Include="SkiaSharp.NativeAssets.Linux" Version="2.88.6" ExcludeAssets="all" />
-    <PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies" Version="2.88.6" />
+    <PackageReference Include="ELFSharp" Version="2.17.3" />
+    <PackageReference Include="ReactiveUI.Fody" Version="19.5.41" />
    </ItemGroup>
   <ItemGroup>
     <Compile Update="Controls\ButtonWithIcon.axaml.cs">
@@ -107,6 +127,10 @@
     </Compile>
     <Compile Update="Controls\ControllerButton.axaml.cs">
       <DependentUpon>ControllerButton.axaml</DependentUpon>
+    </Compile>
+    <Compile Update="Controls\FirmwareSelect.axaml.cs">
+      <SubType>Code</SubType>
+      <DependentUpon>FirmwareSelect.axaml</DependentUpon>
     </Compile>
     <Compile Update="Controls\SoftwareRendererView.axaml.cs">
       <DependentUpon>SoftwareRendererView.axaml</DependentUpon>
@@ -140,6 +164,15 @@
     </Compile>
     <Compile Update="Controls\OptionSection.axaml.cs">
       <DependentUpon>OptionSection.axaml</DependentUpon>
+    </Compile>
+    <Compile Update="Debugger\StatusViews\St018StatusView.axaml.cs">
+      <DependentUpon>St018StatusView.axaml</DependentUpon>
+    </Compile>
+    <Compile Update="Debugger\StatusViews\GbaStatusView.axaml.cs">
+      <DependentUpon>GbaStatusView.axaml</DependentUpon>
+    </Compile>
+    <Compile Update="Debugger\StatusViews\WsStatusView.axaml.cs">
+      <DependentUpon>WsStatusView.axaml</DependentUpon>
     </Compile>
     <Compile Update="Debugger\StatusViews\SmsStatusView.axaml.cs">
       <DependentUpon>SmsStatusView.axaml</DependentUpon>
@@ -210,6 +243,12 @@
     <Compile Update="Debugger\Views\FunctionListView.axaml.cs">
       <DependentUpon>FunctionListView.axaml</DependentUpon>
     </Compile>
+    <Compile Update="Debugger\Views\GbaEventViewerConfigView.axaml.cs">
+      <DependentUpon>GbaEventViewerConfigView.axaml</DependentUpon>
+    </Compile>
+    <Compile Update="Debugger\Views\WsEventViewerConfigView.axaml.cs">
+      <DependentUpon>WsEventViewerConfigView.axaml</DependentUpon>
+    </Compile>
     <Compile Update="Debugger\Views\SmsEventViewerConfigView.axaml.cs">
       <DependentUpon>SmsEventViewerConfigView.axaml</DependentUpon>
     </Compile>
@@ -236,6 +275,18 @@
     </Compile>
     <Compile Update="Debugger\Windows\CommentEditWindow.axaml.cs">
       <DependentUpon>CommentEditWindow.axaml</DependentUpon>
+    </Compile>
+    <Compile Update="Views\WsControllerVerticalView.axaml.cs">
+      <DependentUpon>WsControllerVerticalView.axaml</DependentUpon>
+    </Compile>
+    <Compile Update="Views\WsControllerView.axaml.cs">
+      <DependentUpon>WsControllerView.axaml</DependentUpon>
+    </Compile>
+    <Compile Update="Views\WsConfigView.axaml.cs">
+      <DependentUpon>WsConfigView.axaml</DependentUpon>
+    </Compile>
+    <Compile Update="Views\VideoConfigOverrideView.axaml.cs">
+      <DependentUpon>VideoConfigOverrideView.axaml</DependentUpon>
     </Compile>
     <Compile Update="Views\FontOptionsView.axaml.cs">
       <DependentUpon>FontOptionsView.axaml</DependentUpon>
@@ -345,8 +396,20 @@
     <Compile Update="Views\BandaiHypershotControllerView.axaml.cs">
       <DependentUpon>BandaiHypershotControllerView.axaml</DependentUpon>
     </Compile>
+    <Compile Update="Views\GbaConfigView.axaml.cs">
+      <DependentUpon>GbaConfigView.axaml</DependentUpon>
+    </Compile>
+    <Compile Update="Views\GbaControllerView.axaml.cs">
+      <DependentUpon>GbaControllerView.axaml</DependentUpon>
+    </Compile>
     <Compile Update="Views\PceAvenuePad6View.axaml.cs">
       <DependentUpon>PceAvenuePad6View.axaml</DependentUpon>
+    </Compile>
+    <Compile Update="Views\OtherConsolesConfigView.axaml.cs">
+      <DependentUpon>OtherConsolesConfigView.axaml</DependentUpon>
+    </Compile>
+    <Compile Update="Views\CvConfigView.axaml.cs">
+      <DependentUpon>CvConfigView.axaml</DependentUpon>
     </Compile>
     <Compile Update="Views\SmsInputConfigView.axaml.cs">
       <DependentUpon>SmsInputConfigView.axaml</DependentUpon>
@@ -551,7 +614,9 @@
     <AvaloniaResource Include="Assets\NesIcon.png" />
   </ItemGroup>
   <ItemGroup>
+    <EmbeddedResource Include="Debugger\Documentation\WsDocumentation.json" />
     <EmbeddedResource Include="Debugger\Documentation\SmsDocumentation.json" />
+    <EmbeddedResource Include="Debugger\Documentation\GbaDocumentation.json" />
     <EmbeddedResource Include="Debugger\Documentation\SpcDocumentation.json" />
     <EmbeddedResource Include="Debugger\Documentation\PceDocumentation.json" />
     <EmbeddedResource Include="Debugger\Documentation\GbDocumentation.json" />
@@ -568,6 +633,7 @@
     <EmbeddedResource Include="Debugger\Utilities\LuaScripts\NesGameBoyMode.lua" />
     <EmbeddedResource Include="Debugger\Utilities\LuaScripts\NesLogParallax.lua" />
     <EmbeddedResource Include="Debugger\Utilities\LuaScripts\NesSpriteBox.lua" />
+    <EmbeddedResource Include="Debugger\Utilities\LuaScripts\DisplayState.lua" />
     <EmbeddedResource Include="Debugger\Utilities\LuaScripts\NtscSafeArea.lua" />
     <EmbeddedResource Include="Debugger\Utilities\LuaScripts\NesPianoRoll.lua" />
     <EmbeddedResource Include="Debugger\Utilities\LuaScripts\ReverseMode.lua" />
@@ -575,13 +641,18 @@
     <EmbeddedResource Include="Localization\resources.en.xml" WithCulture="false" Type="Non-Resx" />
     <EmbeddedResource Include="Utilities\DipSwitchDefinitions.xml" />
   </ItemGroup>
+  <ItemGroup>
+    <AvaloniaXaml Update="Controls\FirmwareSelect.axaml">
+      <SubType>Designer</SubType>
+    </AvaloniaXaml>
+  </ItemGroup>
 
   <Target Name="PreBuildWindows" BeforeTargets="PreBuildEvent" Condition="'$(RuntimeIdentifier)'=='win-x64'">
     <Exec Command="cd $(OutDir)&#xD;&#xA;rd Dependencies /s /q&#xD;&#xA;md Dependencies&#xD;&#xA;xcopy /s $(ProjectDir)Dependencies\* Dependencies&#xD;&#xA;copy libHarfBuzzSharp.dll Dependencies&#xD;&#xA;copy libSkiaSharp.dll Dependencies&#xD;&#xA;copy MesenCore.dll Dependencies&#xD;&#xA;cd Dependencies&#xD;&#xA;del ..\Dependencies.zip&#xD;&#xA;powershell Compress-Archive -Path * -DestinationPath '..\Dependencies.zip' -Force&#xD;&#xA;copy ..\Dependencies.zip $(ProjectDir)" />
   </Target>
 
 	<Target Name="PreBuildLinux" BeforeTargets="PreBuildEvent" Condition="'$(RuntimeIdentifier)'=='linux-x64'">
-    <Exec Command="cd $(OutDir)&#xD;&#xA;rm -r Dependencies&#xD;&#xA;mkdir Dependencies&#xD;&#xA;cp -R $(ProjectDir)/Dependencies/* Dependencies&#xD;&#xA;cp libHarfBuzzSharp.so Dependencies&#xD;&#xA;cp libSkiaSharp.so Dependencies&#xD;&#xA;cp MesenCore.so Dependencies&#xD;&#xA;cd Dependencies&#xD;&#xA;rm ../Dependencies.zip&#xD;&#xA;zip -r ../Dependencies.zip *&#xD;&#xA;cp ../Dependencies.zip $(ProjectDir)" />
+    <Exec Command="cd $(OutDir)&#xD;&#xA;rm -rf Dependencies&#xD;&#xA;mkdir Dependencies&#xD;&#xA;cp -R $(ProjectDir)/Dependencies/* Dependencies&#xD;&#xA;cp libHarfBuzzSharp.so Dependencies&#xD;&#xA;cp libSkiaSharp.so Dependencies&#xD;&#xA;cp MesenCore.so Dependencies&#xD;&#xA;cd Dependencies&#xD;&#xA;rm ../Dependencies.zip&#xD;&#xA;zip -r ../Dependencies.zip *&#xD;&#xA;cp ../Dependencies.zip $(ProjectDir)" />
   </Target>
   
 	<Target Name="PreBuildOsx" BeforeTargets="PreBuildEvent" Condition="'$(RuntimeIdentifier)'=='osx-x64' Or '$(RuntimeIdentifier)'=='osx-arm64'">

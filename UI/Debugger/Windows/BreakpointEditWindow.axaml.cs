@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Markup.Xaml;
 using Mesen.Controls;
+using Mesen.Debugger.Utilities;
 using Mesen.Debugger.ViewModels;
 using Mesen.Utilities;
 using System;
@@ -12,8 +13,12 @@ namespace Mesen.Debugger.Windows
 {
 	public class BreakpointEditWindow : MesenWindow
 	{
-		public BreakpointEditWindow()
+		[Obsolete("For designer only")]
+		public BreakpointEditWindow() : this(new BreakpointEditViewModel()) { }
+
+		public BreakpointEditWindow(BreakpointEditViewModel model)
 		{
+			DataContext = model;
 			InitializeComponent();
 #if DEBUG
 			this.AttachDevTools();
@@ -28,7 +33,7 @@ namespace Mesen.Debugger.Windows
 		protected override void OnOpened(EventArgs e)
 		{
 			base.OnOpened(e);
-			this.GetControl<MesenNumericTextBox>("startAddress").Focus();
+			this.GetControl<MesenNumericTextBox>("startAddress").FocusAndSelectAll();
 		}
 
 		private void Ok_OnClick(object sender, RoutedEventArgs e)
@@ -50,7 +55,7 @@ namespace Mesen.Debugger.Windows
 		{
 			Breakpoint copy = bp.Clone();
 			BreakpointEditViewModel model = new BreakpointEditViewModel(copy);
-			BreakpointEditWindow wnd = new BreakpointEditWindow() { DataContext = model };
+			BreakpointEditWindow wnd = new BreakpointEditWindow(model);
 
 			bool result = await wnd.ShowCenteredDialog<bool>(parent);
 			if(result) {

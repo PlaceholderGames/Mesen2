@@ -36,6 +36,8 @@ void DeltaModulationChannel::Reset(bool softReset)
 	_bitsRemaining = 8;
 	_silenceFlag = true;
 	_needToRun = false;
+	_transferStartDelay = 0;
+	_disableDelay = 0;
 
 	_lastValue4011 = 0;
 
@@ -51,7 +53,7 @@ void DeltaModulationChannel::InitSample()
 {
 	_currentAddr = _sampleAddr;
 	_bytesRemaining = _sampleLength;
-	_needToRun = _bytesRemaining > 0;
+	_needToRun |= _bytesRemaining > 0;
 }
 
 void DeltaModulationChannel::StartDmcTransfer()
@@ -81,13 +83,35 @@ void DeltaModulationChannel::SetDmcReadBuffer(uint8_t value)
 		_bytesRemaining--;
 
 		if(_bytesRemaining == 0) {
-			_needToRun = false;
 			if(_loopFlag) {
 				//Looped sample should never set IRQ flag
 				InitSample();
 			} else if(_irqEnabled) {
 				_console->GetCpu()->SetIrqSource(IRQSource::DMC);
 			}
+		}
+	}
+
+	if(_sampleLength == 1 && !_loopFlag) {
+		//When DMA ends around the time the bit counter resets, a CPU glitch sometimes causes another DMA to be requested immediately.
+		if(_bitsRemaining == 8 && _timer.GetTimer() == _timer.GetPeriod() && _console->GetNesConfig().EnableDmcSampleDuplicationGlitch) {
+			//When the DMA ends on the same cycle as the bit counter resets
+			//This glitch exists on all H CPUs and some G CPUs (those from around 1990 and later)
+			//In this case, a full DMA is performed on the same address, and the same sample byte 
+			//is played twice in a row by the DMC
+			_shiftRegister = _readBuffer;
+			_silenceFlag = false;
+			_bufferEmpty = true;
+			InitSample();
+			StartDmcTransfer();
+		} else if(_bitsRemaining == 1 && _timer.GetTimer() < 2) {
+			//When the DMA ends on the APU cycle before the bit counter resets
+			//If it this happens right before the bit counter resets,
+			//a DMA is triggered and aborted 1 cycle later (causing one halted CPU cycle)
+			_shiftRegister = _readBuffer;
+			_bufferEmpty = false;
+			InitSample();
+			_disableDelay = 3;
 		}
 	}
 }
@@ -117,18 +141,13 @@ void DeltaModulationChannel::Run(uint32_t targetCycle)
 				_silenceFlag = false;
 				_shiftRegister = _readBuffer;
 				_bufferEmpty = true;
+				_needToRun = true;
 				StartDmcTransfer();
 			}
 		}
 
 		_timer.AddOutput(_outputLevel);
 	}
-}
-
-void DeltaModulationChannel::Serialize(Serializer &s)
-{
-	SV(_sampleAddr); SV(_sampleLength); SV(_outputLevel); SV(_irqEnabled); SV(_loopFlag); SV(_currentAddr); SV(_bytesRemaining); SV(_readBuffer); SV(_bufferEmpty); SV(_shiftRegister); SV(_bitsRemaining); SV(_silenceFlag); SV(_needToRun);
-	SV(_timer);
 }
 
 bool DeltaModulationChannel::IrqPending(uint32_t cyclesToRun)
@@ -215,28 +234,52 @@ void DeltaModulationChannel::EndFrame()
 void DeltaModulationChannel::SetEnabled(bool enabled)
 {
 	if(!enabled) {
-		_bytesRemaining = 0;
-		_needToRun = false;
+		if(_disableDelay == 0) {
+			//Disabling takes effect with a 1 apu cycle delay
+			//If a DMA starts during this time, it gets cancelled
+			//but this will still cause the CPU to be halted for 1 cycle
+			if((_console->GetCpu()->GetCycleCount() & 0x01) == 0) {
+				_disableDelay = 2;
+			} else {
+				_disableDelay = 3;
+			}
+		}
+		_needToRun = true;
 	} else if(_bytesRemaining == 0) {
 		InitSample();
 		
 		//Delay a number of cycles based on odd/even cycles
 		//Allows behavior to match dmc_dma_start_test
 		if((_console->GetCpu()->GetCycleCount() & 0x01) == 0) {
-			_needInit = 2;
+			_transferStartDelay = 2;
 		} else {
-			_needInit = 3;
+			_transferStartDelay = 3;
 		}
+		_needToRun = true;
 	}
+}
+
+void DeltaModulationChannel::ProcessClock()
+{
+	if(_disableDelay && --_disableDelay == 0) {
+		_disableDelay = 0;
+		_bytesRemaining = 0;
+
+		//Abort any on-going transfer that hasn't fully started
+		_console->GetCpu()->StopDmcTransfer();
+	}
+
+	if(_transferStartDelay && --_transferStartDelay == 0) {
+		StartDmcTransfer();
+	}
+
+	_needToRun = _disableDelay || _transferStartDelay || _bytesRemaining;
 }
 
 bool DeltaModulationChannel::NeedToRun()
 {
-	if(_needInit > 0) {
-		_needInit--;
-		if(_needInit == 0) {
-			StartDmcTransfer();
-		}
+	if(_needToRun) {
+		ProcessClock();
 	}
 	return _needToRun;
 }
@@ -255,4 +298,25 @@ ApuDmcState DeltaModulationChannel::GetState()
 	state.NextSampleAddr = _currentAddr;
 	state.SampleLength = _sampleLength;
 	return state;
+}
+
+void DeltaModulationChannel::Serialize(Serializer& s)
+{
+	SV(_sampleAddr);
+	SV(_sampleLength);
+	SV(_outputLevel);
+	SV(_irqEnabled);
+	SV(_loopFlag);
+	SV(_currentAddr);
+	SV(_bytesRemaining);
+	SV(_readBuffer);
+	SV(_bufferEmpty);
+	SV(_shiftRegister);
+	SV(_bitsRemaining);
+	SV(_silenceFlag);
+	SV(_needToRun);
+	SV(_timer);
+
+	SV(_transferStartDelay);
+	SV(_disableDelay);
 }

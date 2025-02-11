@@ -17,11 +17,10 @@ using Mesen.Interop;
 using Mesen.Utilities;
 using System;
 using System.Collections.Generic;
-using System.Diagnostics.CodeAnalysis;
 
 namespace Mesen.Debugger.Views
 {
-	public class DisassemblyView : UserControl
+	public class DisassemblyView : MesenUserControl
 	{
 		private DisassemblyViewModel Model => _model!;
 		private CpuType CpuType => Model.CpuType;
@@ -56,6 +55,7 @@ namespace Mesen.Debugger.Views
 		{
 			if(DataContext is DisassemblyViewModel model && _model != model) {
 				_model = model;
+				_model.SetViewer(_viewer);
 				_selectionHandler = new CodeViewerSelectionHandler(_viewer, _model, (rowIndex, rowAddress) => rowAddress, true);
 			}
 			base.OnDataContextChanged(e);
@@ -81,6 +81,19 @@ namespace Mesen.Debugger.Views
 						AssemblerWindow.EditCode(CpuType, Model.SelectionStart, code, byteCount);
 					}
 				},
+				new ContextMenuAction() {
+					ActionType = ActionType.Undo,
+					IsEnabled = () => DebugApi.HasUndoHistory(),
+					IsVisible = () => !IsMarginClick,
+					Shortcut = () => ConfigManager.Config.Debug.Shortcuts.Get(DebuggerShortcut.Undo),
+					OnClick = () => {
+						if(DebugApi.HasUndoHistory()) {
+							DebugApi.PerformUndo();
+							Model.Debugger.UpdateDisassembly(false);
+						}
+					}
+				},
+				new ContextMenuSeparator() { IsVisible = () => !IsMarginClick },
 				new ContextMenuAction() {
 					ActionType = ActionType.Copy,
 					Shortcut = () => ConfigManager.Config.Debug.Shortcuts.Get(DebuggerShortcut.Copy),
@@ -127,7 +140,7 @@ namespace Mesen.Debugger.Views
 					Shortcut = () => ConfigManager.Config.Debug.Shortcuts.Get(DebuggerShortcut.CodeWindow_EditLabel),
 					HintText = () => GetHint(ActionLocation),
 					IsVisible = () => !IsMarginClick,
-					IsEnabled = () => ActionLocation.Label != null || ActionLocation.AbsAddress != null,
+					IsEnabled = () => ActionLocation.Label != null || ActionLocation.AbsAddress != null || (ActionLocation.RelAddress != null && ActionLocation.RelAddress.Value.Type.SupportsLabels()),
 					OnClick = () => {
 						LocationInfo loc = ActionLocation;
 						CodeLabel? label = loc.Label ?? (loc.AbsAddress.HasValue ? LabelManager.GetLabel(loc.AbsAddress.Value) : null);
@@ -135,6 +148,8 @@ namespace Mesen.Debugger.Views
 							LabelEditWindow.EditLabel(CpuType, this, label);
 						} else if(loc.AbsAddress != null) {
 							LabelEditWindow.EditLabel(CpuType, this, new CodeLabel(loc.AbsAddress.Value));
+						} else if(loc.RelAddress != null) {
+							LabelEditWindow.EditLabel(CpuType, this, new CodeLabel(loc.RelAddress.Value));
 						}
 					}
 				},
@@ -144,7 +159,7 @@ namespace Mesen.Debugger.Views
 					HintText = () => GetHint(ActionLocation),
 					IsVisible = () => false,
 					AllowedWhenHidden = true,
-					IsEnabled = () => ActionLocation.Label != null || ActionLocation.AbsAddress != null,
+					IsEnabled = () => ActionLocation.Label != null || ActionLocation.AbsAddress != null || (ActionLocation.RelAddress != null && ActionLocation.RelAddress.Value.Type.SupportsLabels()),
 					OnClick = () => {
 						LocationInfo loc = ActionLocation;
 						CodeLabel? label = loc.Label ?? (loc.AbsAddress.HasValue ? LabelManager.GetLabel(loc.AbsAddress.Value) : null);
@@ -152,6 +167,8 @@ namespace Mesen.Debugger.Views
 							CommentEditWindow.EditComment(this, label);
 						} else if(loc.AbsAddress != null) {
 							CommentEditWindow.EditComment(this, new CodeLabel(loc.AbsAddress.Value));
+						}else if(loc.RelAddress != null) {
+							CommentEditWindow.EditComment(this, new CodeLabel(loc.RelAddress.Value));
 						}
 					}
 				},
@@ -249,7 +266,7 @@ namespace Mesen.Debugger.Views
 			};
 
 			actions.AddRange(GetBreakpointContextMenu());
-			DebugShortcutManager.CreateContextMenu(_viewer, actions);
+			AddDisposables(DebugShortcutManager.CreateContextMenu(_viewer, actions));
 		}
 
 		private string? GetSearchString()
@@ -274,6 +291,7 @@ namespace Mesen.Debugger.Views
 
 			switch(type) {
 				case CodeSegmentType.OpCode:
+				case CodeSegmentType.Token:
 				case CodeSegmentType.Address:
 				case CodeSegmentType.Label:
 				case CodeSegmentType.ImmediateValue:
@@ -348,7 +366,18 @@ namespace Mesen.Debugger.Views
 							BreakpointManager.ToggleBreakpoint(ActionLocation.AbsAddress.Value, CpuType);
 						}
 					}
-				}
+				},
+				new ContextMenuSeparator() { IsVisible = () => IsMarginClick },
+				new ContextMenuAction() {
+					ActionType = ActionType.ToggleForbidBreakpoint,
+					HintText = () => GetHint(ActionLocation),
+					IsVisible = () => IsMarginClick,
+					OnClick = () => {
+						if(ActionLocation.AbsAddress != null) {
+							BreakpointManager.ToggleForbidBreakpoint(ActionLocation.AbsAddress.Value, CpuType);
+						}
+					}
+				},
 			};
 		}
 

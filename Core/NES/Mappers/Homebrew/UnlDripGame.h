@@ -24,6 +24,8 @@ protected:
 	bool AllowRegisterRead() override { return true; }
 	uint16_t RegisterStartAddress() override { return 0x8000; }
 	uint16_t RegisterEndAddress() override { return 0xFFFF; }
+	bool EnableCpuClockHook() override { return true; }
+	bool EnableCustomVramRead() override { return true; }
 
 	void InitMapper() override
 	{
@@ -68,6 +70,8 @@ protected:
 
 	void ProcessCpuClock() override
 	{
+		BaseProcessCpuClock();
+
 		if(_irqEnabled) {
 			if(_irqCounter > 0) {
 				_irqCounter--;
@@ -112,7 +116,7 @@ protected:
 				return (value << 6) | (value << 4) | (value << 2) | value;
 			}
 		}
-		return BaseMapper::MapperReadVram(addr, memoryOperationType);
+		return InternalReadVram(addr);
 	}
 
 	uint8_t ReadRegister(uint16_t addr) override

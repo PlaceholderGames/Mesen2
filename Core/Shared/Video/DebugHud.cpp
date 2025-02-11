@@ -23,9 +23,10 @@ void DebugHud::ClearScreen()
 {
 	auto lock = _commandLock.AcquireSafe();
 	_commands.clear();
+	_drawPixels.clear();
 }
 
-bool DebugHud::Draw(uint32_t* argbBuffer, FrameInfo frameInfo, OverscanDimensions overscan, uint32_t frameNumber, bool autoScale, float forcedScale, bool clearAndUpdate)
+bool DebugHud::Draw(uint32_t* argbBuffer, FrameInfo frameInfo, OverscanDimensions overscan, uint32_t frameNumber, HudScaleFactors scaleFactors, bool clearAndUpdate)
 {
 	auto lock = _commandLock.AcquireSafe();
 
@@ -34,7 +35,7 @@ bool DebugHud::Draw(uint32_t* argbBuffer, FrameInfo frameInfo, OverscanDimension
 		unordered_map<uint32_t, uint32_t> drawPixels;
 		drawPixels.reserve(1000);
 		for(unique_ptr<DrawCommand>& command : _commands) {
-			command->Draw(&drawPixels, argbBuffer, frameInfo, overscan, frameNumber, autoScale, forcedScale);
+			command->Draw(&drawPixels, argbBuffer, frameInfo, overscan, frameNumber, scaleFactors);
 		}
 
 		isDirty = drawPixels.size() != _drawPixels.size();
@@ -63,7 +64,7 @@ bool DebugHud::Draw(uint32_t* argbBuffer, FrameInfo frameInfo, OverscanDimension
 	} else {
 		isDirty = true;
 		for(unique_ptr<DrawCommand>& command : _commands) {
-			command->Draw(nullptr, argbBuffer, frameInfo, overscan, frameNumber, autoScale, forcedScale);
+			command->Draw(nullptr, argbBuffer, frameInfo, overscan, frameNumber, scaleFactors);
 		}
 	}
 
@@ -88,7 +89,7 @@ void DebugHud::DrawRectangle(int x, int y, int width, int height, int color, boo
 	AddCommand(unique_ptr<DrawCommand>(new DrawRectangleCommand(x, y, width, height, color, fill, frameCount, startFrame)));
 }
 
-void DebugHud::DrawString(int x, int y, string text, int color, int backColor, int frameCount, int startFrame, int maxWidth)
+void DebugHud::DrawString(int x, int y, string text, int color, int backColor, int frameCount, int startFrame, int maxWidth, bool overwritePixels)
 {
-	AddCommand(unique_ptr<DrawCommand>(new DrawStringCommand(x, y, text, color, backColor, frameCount, startFrame, maxWidth)));
+	AddCommand(unique_ptr<DrawCommand>(new DrawStringCommand(x, y, text, color, backColor, frameCount, startFrame, maxWidth, overwritePixels)));
 }

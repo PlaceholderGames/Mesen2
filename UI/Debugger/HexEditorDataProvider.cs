@@ -170,13 +170,13 @@ namespace Mesen.Debugger
 			if(_breakpointTypes != null) {
 				switch(_breakpointTypes[index]) {
 					case BreakpointTypeFlags.Execute:
-						_byteInfo.BorderColor = ConfigManager.Config.Debug.Debugger.CodeExecBreakpointColor;
+						_byteInfo.BorderColor = Color.FromUInt32(ConfigManager.Config.Debug.Debugger.CodeExecBreakpointColor);
 						break;
 					case BreakpointTypeFlags.Write:
-						_byteInfo.BorderColor = ConfigManager.Config.Debug.Debugger.CodeWriteBreakpointColor;
+						_byteInfo.BorderColor = Color.FromUInt32(ConfigManager.Config.Debug.Debugger.CodeWriteBreakpointColor);
 						break;
 					case BreakpointTypeFlags.Read:
-						_byteInfo.BorderColor = ConfigManager.Config.Debug.Debugger.CodeReadBreakpointColor;
+						_byteInfo.BorderColor = Color.FromUInt32(ConfigManager.Config.Debug.Debugger.CodeReadBreakpointColor);
 						break;
 				}
 			}
@@ -199,6 +199,19 @@ namespace Mesen.Debugger
 			_byteInfo.Value = _data[index];
 
 			return _byteInfo;
+		}
+
+		public byte GetRawByte(int byteIndex)
+		{
+			long index = byteIndex - _firstByteIndex;
+			byte[] data = _data;
+			if(index < 0 || index >= _data.Length) {
+				//Byte is not available in the currently visible data (e.g user scrolled down/up after selecting the byte)
+				//Get the byte from the core instead
+				return DebugApi.GetMemoryValue(_memoryType, (uint)byteIndex);
+			}
+
+			return data[index];
 		}
 
 		public string ConvertValueToString(UInt64 val, out int keyLength)
@@ -227,6 +240,5 @@ namespace Mesen.Debugger
 			}
 			return (byte)'.';
 		}
-
 	}
 }

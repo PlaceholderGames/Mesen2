@@ -10,12 +10,15 @@
 #include "Utilities/ISerializable.h"
 
 class NesConsole;
+class Epsm;
 enum class MemoryType;
 struct MapperStateEntry;
 
 class BaseMapper : public INesMemoryHandler, public ISerializable
 {
 private:
+	unique_ptr<Epsm> _epsm;
+
 	MirroringType _mirroringType = {};
 	string _batteryFilename;
 
@@ -33,7 +36,12 @@ private:
 	uint32_t _internalRamMask = 0x7FF;
 
 	bool _hasBusConflicts = false;
+	bool _hasDefaultWorkRam = false;
 	
+	bool _hasCustomReadVram = false;
+	bool _hasCpuClockHook = false;
+	bool _hasVramAddressHook = false;
+
 	bool _allowRegisterRead = false;
 	bool _isReadRegisterAddr[0x10000] = {};
 	bool _isWriteRegisterAddr[0x10000] = {};
@@ -73,6 +81,9 @@ protected:
 	bool _hasChrBattery = false;
 	int16_t _vramOpenBusValue = -1;
 
+	uint8_t* _mapperRam = nullptr;
+	uint32_t _mapperRamSize = 0;
+
 	virtual void InitMapper() = 0;
 	virtual void InitMapper(RomData &romData);
 	virtual uint16_t GetPrgPageSize() = 0;
@@ -96,9 +107,15 @@ protected:
 	virtual uint32_t GetWorkRamSize() { return 0x2000; }
 	virtual uint32_t GetWorkRamPageSize() { return 0x2000; }
 	
+	virtual uint32_t GetMapperRamSize() { return 0; }
+
 	virtual uint16_t RegisterStartAddress() { return 0x8000; }
 	virtual uint16_t RegisterEndAddress() { return 0xFFFF; }
 	virtual bool AllowRegisterRead() { return false; }
+
+	virtual bool EnableCpuClockHook() { return false; }
+	virtual bool EnableCustomVramRead() { return false; }
+	virtual bool EnableVramAddressHook() { return false; }
 
 	virtual uint32_t GetDipSwitchCount() { return 0; }
 	virtual uint32_t GetNametableCount() { return 0; }
@@ -128,7 +145,7 @@ protected:
 	void RemovePpuMemoryMapping(uint16_t startAddr, uint16_t endAddr);
 
 	bool HasBattery();
-	void LoadBattery();
+	virtual void LoadBattery();
 	string GetBatteryFilename();
 
 	uint32_t GetPrgPageCount();
@@ -148,13 +165,25 @@ protected:
 
 	void RestorePrgChrState();
 
+	void BaseProcessCpuClock();
+
 	uint8_t* GetNametable(uint8_t nametableIndex);
 	void SetNametable(uint8_t index, uint8_t nametableIndex);
 	void SetNametables(uint8_t nametable1Index, uint8_t nametable2Index, uint8_t nametable3Index, uint8_t nametable4Index);
 	void SetMirroringType(MirroringType type);
 	MirroringType GetMirroringType();
 
-	uint8_t InternalReadVram(uint16_t addr);
+	void InternalWriteVram(uint16_t addr, uint8_t value);
+
+	__forceinline uint8_t InternalReadVram(uint16_t addr)
+	{
+		if(_chrMemoryAccess[addr >> 8] & MemoryAccessType::Read) {
+			return _chrPages[addr >> 8][(uint8_t)addr];
+		}
+
+		//Open bus - "When CHR is disabled, the pattern tables are open bus. Theoretically, this should return the LSB of the address read, but real-world behavior varies."
+		return _vramOpenBusValue >= 0 ? _vramOpenBusValue : addr;
+	}
 
 	virtual vector<MapperStateEntry> GetMapperStateEntries() { return {}; }
 
@@ -164,16 +193,26 @@ public:
 	void Initialize(NesConsole* console, RomData &romData);
 	void InitSpecificMapper(RomData& romData);
 
+	BaseMapper();
 	virtual ~BaseMapper();
 	virtual void Reset(bool softReset);
 	virtual void OnAfterResetPowerOn() {}
 
 	GameSystem GetGameSystem();
 	PpuModel GetPpuModel();
+	
+	Epsm* GetEpsm() { return _epsm.get(); }
+	
+	bool HasDefaultWorkRam();
 
-	virtual void SetRegion(ConsoleRegion region) { }
-	virtual void ProcessCpuClock() { }
+	void SetRegion(ConsoleRegion region);
+
+	__forceinline bool HasCpuClockHook() { return _hasCpuClockHook; }
+	virtual void ProcessCpuClock();
+	
+	__forceinline bool HasVramAddressHook() { return _hasVramAddressHook; }
 	virtual void NotifyVramAddressChange(uint16_t addr);
+
 	virtual void GetMemoryRanges(MemoryRanges &ranges) override;
 	virtual uint32_t GetInternalRamSize() { return 0x800; }
 
@@ -190,10 +229,16 @@ public:
 	void WritePrgRam(uint16_t addr, uint8_t value);
 
 	virtual uint8_t MapperReadVram(uint16_t addr, MemoryOperationType operationType);
-	
+	virtual void MapperWriteVram(uint16_t addr, uint8_t value);
+
 	__forceinline uint8_t ReadVram(uint16_t addr, MemoryOperationType type = MemoryOperationType::PpuRenderingRead)
 	{
-		uint8_t value = MapperReadVram(addr, type);
+		uint8_t value;
+		if(!_hasCustomReadVram) {
+			value = InternalReadVram(addr);
+		} else {
+			value = MapperReadVram(addr, type);
+		}
 		_emu->ProcessPpuRead<CpuType::Nes>(addr, value, MemoryType::NesPpuMemory, type);
 		return value;
 	}

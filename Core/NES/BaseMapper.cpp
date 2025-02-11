@@ -6,6 +6,7 @@
 #include "NES/NesTypes.h"
 #include "NES/NesMemoryManager.h"
 #include "NES/RomData.h"
+#include "NES/Epsm.h"
 #include "Debugger/DebugTypes.h"
 #include "Shared/MessageManager.h"
 #include "Shared/CheatManager.h"
@@ -17,6 +18,7 @@
 #include "Utilities/Serializer.h"
 #include "Shared/MemoryType.h"
 #include "Shared/MemoryOperationType.h"
+#include "Shared/FirmwareHelper.h"
 
 void BaseMapper::WriteRegister(uint16_t addr, uint8_t value) { }
 uint8_t BaseMapper::ReadRegister(uint16_t addr) { return 0; }
@@ -136,14 +138,24 @@ void BaseMapper::SetCpuMemoryMapping(uint16_t startAddr, uint16_t endAddr, PrgMe
 		case PrgMemoryType::PrgRom: source = _prgRom; sourceSize = _prgSize; break;
 		case PrgMemoryType::SaveRam: source = _saveRam; sourceSize = _saveRamSize; break;
 		case PrgMemoryType::WorkRam: source = _workRam; sourceSize = _workRamSize; break;
+		case PrgMemoryType::MapperRam: source = _mapperRam; sourceSize = _mapperRamSize; break;
 	}
 
 	int firstSlot = startAddr >> 8;
 	int slotCount = (endAddr - startAddr + 1) >> 8;
 	for(int i = 0; i < slotCount; i++) {
-		_prgMemoryOffset[firstSlot + i] = sourceOffset + i * 0x100;
-		_prgMemoryType[firstSlot + i] = type;
-		_prgMemoryAccess[firstSlot + i] = (MemoryAccessType)accessType;
+		if(sourceSize == 0) {
+			_prgPages[i] = nullptr;
+			_prgMemoryAccess[i] = MemoryAccessType::NoAccess;
+		} else {
+			while(sourceOffset >= sourceSize) {
+				sourceOffset -= sourceSize;
+			}
+			_prgPages[firstSlot + i] = source + sourceOffset;
+			_prgMemoryOffset[firstSlot + i] = sourceOffset + i * 0x100;
+			_prgMemoryType[firstSlot + i] = type;
+			_prgMemoryAccess[firstSlot + i] = (MemoryAccessType)accessType;
+		}
 	}
 
 	SetCpuMemoryMapping(startAddr, endAddr, source, sourceOffset, sourceSize, accessType);
@@ -231,6 +243,9 @@ void BaseMapper::SetPpuMemoryMapping(uint16_t startAddr, uint16_t endAddr, uint1
 			pageCount = _nametableCount;
 			defaultAccessType |= MemoryAccessType::Write;
 			break;
+
+		default:
+			throw new std::runtime_error("Invalid parameter");
 	}
 
 	if(pageCount == 0) {
@@ -283,14 +298,27 @@ void BaseMapper::SetPpuMemoryMapping(uint16_t startAddr, uint16_t endAddr, ChrMe
 			sourceMemory = _nametableRam;
 			sourceSize = _ntRamSize;
 			break;
+
+		case ChrMemoryType::MapperRam:
+			sourceMemory = _mapperRam;
+			sourceSize = _mapperRamSize;
+			break;
 	}
 
 	int firstSlot = startAddr >> 8;
 	int slotCount = (endAddr - startAddr + 1) >> 8;
 	for(int i = 0; i < slotCount; i++) {
-		_chrMemoryOffset[firstSlot + i] = sourceOffset + i * 256;
-		_chrMemoryType[firstSlot + i] = type;
-		_chrMemoryAccess[firstSlot + i] = (MemoryAccessType)accessType;
+		if(sourceSize == 0) {
+			_chrPages[i] = nullptr;
+			_chrMemoryAccess[i] = MemoryAccessType::NoAccess;
+		} else {
+			while(sourceOffset >= sourceSize) {
+				sourceOffset -= sourceSize;
+			}
+			_chrMemoryOffset[firstSlot + i] = sourceOffset + i * 256;
+			_chrMemoryType[firstSlot + i] = type;
+			_chrMemoryAccess[firstSlot + i] = (MemoryAccessType)accessType;
+		}
 	}
 
 	SetPpuMemoryMapping(startAddr, endAddr, sourceMemory, sourceOffset, sourceSize, accessType);
@@ -478,6 +506,11 @@ void BaseMapper::InitializeChrRam(int32_t chrRamSize)
 	}
 }
 
+bool BaseMapper::HasDefaultWorkRam()
+{
+	return _hasDefaultWorkRam;
+}
+
 void BaseMapper::SetupDefaultWorkRam()
 {
 	//Setup a default work/save ram in 0x6000-0x7FFF space
@@ -527,6 +560,7 @@ void BaseMapper::Serialize(Serializer& s)
 	SVArray(_chrRam, _chrRamSize);
 	SVArray(_workRam, _workRamSize);
 	SVArray(_saveRam, _saveRamSize);
+	SVArray(_mapperRam, _mapperRamSize);
 	SVArray(_nametableRam, _ntRamSize);
 
 	SVArray(_prgMemoryOffset, 0x100);
@@ -537,6 +571,10 @@ void BaseMapper::Serialize(Serializer& s)
 	SVArray(_chrMemoryAccess, 0x40);
 
 	SV(_mirroringType);
+
+	if(_epsm) {
+		SV(_epsm);
+	}
 
 	if(!s.IsSaving()) {
 		RestorePrgChrState();
@@ -576,6 +614,7 @@ void BaseMapper::Initialize(NesConsole* console, RomData& romData)
 
 	if(romData.SaveRamSize == -1) {
 		_saveRamSize = HasBattery() ? GetSaveRamSize() : 0;
+		_hasDefaultWorkRam = _saveRamSize > 0;
 	} else if(ForceSaveRamSize()) {
 		_saveRamSize = GetSaveRamSize();
 	} else {
@@ -584,6 +623,7 @@ void BaseMapper::Initialize(NesConsole* console, RomData& romData)
 
 	if(romData.WorkRamSize == -1) {
 		_workRamSize = HasBattery() ? 0 : GetWorkRamSize();
+		_hasDefaultWorkRam = _workRamSize > 0;
 	} else if(ForceWorkRamSize()) {
 		_workRamSize = GetWorkRamSize();
 	} else {
@@ -591,6 +631,9 @@ void BaseMapper::Initialize(NesConsole* console, RomData& romData)
 	}
 
 	_allowRegisterRead = AllowRegisterRead();
+	_hasCpuClockHook = EnableCpuClockHook();
+	_hasCustomReadVram = EnableCustomVramRead();
+	_hasVramAddressHook = EnableVramAddressHook();
 
 	memset(_isReadRegisterAddr, 0, sizeof(_isReadRegisterAddr));
 	memset(_isWriteRegisterAddr, 0, sizeof(_isWriteRegisterAddr));
@@ -631,8 +674,13 @@ void BaseMapper::Initialize(NesConsole* console, RomData& romData)
 	_workRam = new uint8_t[_workRamSize];
 	_emu->RegisterMemory(MemoryType::NesWorkRam, _workRam, _workRamSize);
 
+	_mapperRamSize = GetMapperRamSize();
+	_mapperRam = new uint8_t[_mapperRamSize];
+	_emu->RegisterMemory(MemoryType::NesMapperRam, _mapperRam, _mapperRamSize);
+
 	_console->InitializeRam(_saveRam, _saveRamSize);
 	_console->InitializeRam(_workRam, _workRamSize);
+	_console->InitializeRam(_mapperRam, _mapperRamSize);
 
 	_nametableCount = GetNametableCount();
 	if(_nametableCount == 0) {
@@ -686,12 +734,23 @@ void BaseMapper::Initialize(NesConsole* console, RomData& romData)
 	LoadBattery();
 
 	_romInfo.HasChrRam = HasChrRam();
+
+	if(_romInfo.HasEpsm) {
+		vector<uint8_t> adpcmRom;
+		FirmwareHelper::LoadYmf288AdpcmRom(_emu, adpcmRom);
+		_epsm.reset(new Epsm(_emu, _console, adpcmRom));
+		_hasCpuClockHook = true;
+	}
 }
 
 void BaseMapper::InitSpecificMapper(RomData& romData)
 {
 	InitMapper();
 	InitMapper(romData);
+}
+
+BaseMapper::BaseMapper()
+{
 }
 
 BaseMapper::~BaseMapper()
@@ -701,6 +760,7 @@ BaseMapper::~BaseMapper()
 	delete[] _prgRom;
 	delete[] _saveRam;
 	delete[] _workRam;
+	delete[] _mapperRam;
 	delete[] _nametableRam;
 }
 
@@ -710,8 +770,8 @@ void BaseMapper::GetMemoryRanges(MemoryRanges &ranges)
 		ranges.AddHandler(MemoryOperation::Read, 0x6000, 0xFFFF);
 		ranges.AddHandler(MemoryOperation::Write, 0x6000, 0xFFFF);
 	} else {
-		ranges.AddHandler(MemoryOperation::Read, 0x4018, 0xFFFF);
-		ranges.AddHandler(MemoryOperation::Write, 0x4018, 0xFFFF);
+		ranges.AddHandler(MemoryOperation::Read, 0x4020, 0xFFFF);
+		ranges.AddHandler(MemoryOperation::Write, 0x4020, 0xFFFF);
 	}
 }
 
@@ -856,20 +916,29 @@ void BaseMapper::WritePrgRam(uint16_t addr, uint8_t value)
 	}
 }
 
+void BaseMapper::SetRegion(ConsoleRegion region)
+{
+	if(_epsm) {
+		_epsm->OnRegionChanged();
+	}
+}
+
+void BaseMapper::BaseProcessCpuClock()
+{
+	if(_epsm) {
+		_epsm->Exec();
+	}
+}
+
+void BaseMapper::ProcessCpuClock()
+{
+	BaseProcessCpuClock();
+}
+
 void BaseMapper::NotifyVramAddressChange(uint16_t addr)
 {
 	//This is called when the VRAM addr on the PPU memory bus changes
 	//Used by MMC3/MMC5/etc
-}
-
-uint8_t BaseMapper::InternalReadVram(uint16_t addr)
-{
-	if(_chrMemoryAccess[addr >> 8] & MemoryAccessType::Read) {
-		return _chrPages[addr >> 8][(uint8_t)addr];
-	}
-
-	//Open bus - "When CHR is disabled, the pattern tables are open bus. Theoretically, this should return the LSB of the address read, but real-world behavior varies."
-	return _vramOpenBusValue >= 0 ? _vramOpenBusValue : addr;
 }
 
 uint8_t BaseMapper::DebugReadVram(uint16_t addr, bool disableSideEffects)
@@ -905,7 +974,16 @@ void BaseMapper::DebugWriteVram(uint16_t addr, uint8_t value, bool disableSideEf
 void BaseMapper::WriteVram(uint16_t addr, uint8_t value)
 {
 	_emu->ProcessPpuWrite<CpuType::Nes>(addr, value, MemoryType::NesPpuMemory);
+	MapperWriteVram(addr, value);
+}
 
+void BaseMapper::MapperWriteVram(uint16_t addr, uint8_t value)
+{
+	InternalWriteVram(addr, value);
+}
+
+void BaseMapper::InternalWriteVram(uint16_t addr, uint8_t value)
+{
 	if(_chrMemoryAccess[addr >> 8] & MemoryAccessType::Write) {
 		_chrPages[addr >> 8][(uint8_t)addr] = value;
 	}
@@ -933,16 +1011,19 @@ AddressInfo BaseMapper::GetAbsoluteAddress(uint16_t relativeAddr)
 		info.Address = relativeAddr & _internalRamMask;
 		info.Type = MemoryType::NesInternalRam;
 	} else {
-		uint8_t *prgAddr = _prgPages[relativeAddr >> 8] + (uint8_t)relativeAddr;
-		if(prgAddr >= _prgRom && prgAddr < _prgRom + _prgSize) {
-			info.Address = (uint32_t)(prgAddr - _prgRom);
+		uint8_t *addr = _prgPages[relativeAddr >> 8] + (uint8_t)relativeAddr;
+		if(addr >= _prgRom && addr < _prgRom + _prgSize) {
+			info.Address = (uint32_t)(addr - _prgRom);
 			info.Type = MemoryType::NesPrgRom;
-		} else if(prgAddr >= _workRam && prgAddr < _workRam + _workRamSize) {
-			info.Address = (uint32_t)(prgAddr - _workRam);
+		} else if(addr >= _workRam && addr < _workRam + _workRamSize) {
+			info.Address = (uint32_t)(addr - _workRam);
 			info.Type = MemoryType::NesWorkRam;
-		} else if(prgAddr >= _saveRam && prgAddr < _saveRam + _saveRamSize) {
-			info.Address = (uint32_t)(prgAddr - _saveRam);
+		} else if(addr >= _saveRam && addr < _saveRam + _saveRamSize) {
+			info.Address = (uint32_t)(addr - _saveRam);
 			info.Type = MemoryType::NesSaveRam;
+		} else if(addr >= _mapperRam && addr < _mapperRam + _mapperRamSize) {
+			info.Address = (uint32_t)(addr - _mapperRam);
+			info.Type = MemoryType::NesMapperRam;
 		} else {
 			info.Address = -1;
 			info.Type = MemoryType::None;
@@ -964,6 +1045,9 @@ void BaseMapper::GetPpuAbsoluteAddress(uint16_t relativeAddr, AddressInfo& info)
 		} else if(addr >= _chrRam && addr < _chrRam + _chrRamSize) {
 			info.Address = (uint32_t)(addr - _chrRam);
 			info.Type = MemoryType::NesChrRam;
+		} else if(addr >= _mapperRam && addr < _mapperRam + _mapperRamSize) {
+			info.Address = (uint32_t)(addr - _mapperRam);
+			info.Type = MemoryType::NesMapperRam;
 		} else if(addr >= _nametableRam && addr < _nametableRam + _nametableCount * BaseMapper::NametableSize) {
 			info.Address = (uint32_t)(addr - _nametableRam);
 			info.Type = MemoryType::NesNametableRam;
@@ -989,6 +1073,7 @@ AddressInfo BaseMapper::GetRelativeAddress(AddressInfo& addr)
 		case MemoryType::NesPrgRom: ptrAddress = _prgRom; break;
 		case MemoryType::NesWorkRam: ptrAddress = _workRam; break;
 		case MemoryType::NesSaveRam: ptrAddress = _saveRam; break;
+		case MemoryType::NesMapperRam: ptrAddress = _mapperRam; break;
 		case MemoryType::NesInternalRam: return { (int32_t)(addr.Address & _internalRamMask), MemoryType::NesMemory };
 		default: return { GetPpuRelativeAddress(addr), MemoryType::NesPpuMemory };
 	}
@@ -1013,6 +1098,7 @@ int32_t BaseMapper::GetPpuRelativeAddress(AddressInfo& addr)
 		case MemoryType::NesChrRom: ptrAddress = _chrRom; break;
 		case MemoryType::NesChrRam: ptrAddress = _chrRam; break;
 		case MemoryType::NesNametableRam: ptrAddress = _nametableRam; break;
+		case MemoryType::NesMapperRam: ptrAddress = _mapperRam; break;
 		case MemoryType::NesPaletteRam: return 0x3F00 | (addr.Address & 0x1F); break;
 		default: return -1;
 	}
@@ -1070,6 +1156,7 @@ CartridgeState BaseMapper::GetState()
 	state.SaveRamPageSize = GetSaveRamPageSize();
 
 	vector<MapperStateEntry> entries = GetMapperStateEntries();
+	assert(entries.size() <= 200);
 	state.CustomEntryCount = (uint32_t)entries.size();
 	for(int i = 0; i < entries.size(); i++) {
 		state.CustomEntries[i] = entries[i];

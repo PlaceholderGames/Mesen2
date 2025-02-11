@@ -124,33 +124,39 @@ namespace Mesen.Debugger.Windows
 		{
 			TooltipEntries entries = new();
 			entries.AddEntry("Type", ResourceHelper.GetEnumText(evt.Type));
+			
+			entries.AddSeparator("LocationSeparator");
+
 			entries.AddEntry("Scanline", evt.Scanline.ToString());
 			entries.AddEntry(_model.CpuType == CpuType.Snes ? "H-Clock" : "Cycle", evt.Cycle.ToString());
 			entries.AddEntry("PC", "$" + evt.ProgramCounter.ToString("X" + _model.CpuType.GetAddressSize()));
 
-			switch(evt.Type) {
-				case DebugEventType.Register:
-					bool isWrite = evt.Operation.Type == MemoryOperationType.Write || evt.Operation.Type == MemoryOperationType.DmaWrite;
-					bool isDma = evt.Operation.Type == MemoryOperationType.DmaWrite || evt.Operation.Type == MemoryOperationType.DmaRead;
+			entries.AddSeparator("AddressValueSeparator");
 
-					CodeLabel? label = LabelManager.GetLabel(new AddressInfo() { Address = (int)evt.Operation.Address, Type = MemoryType.SnesMemory });
-					string registerText = "$" + evt.Operation.Address.ToString("X4");
-					if(label != null) {
-						registerText = label.Label + " (" + registerText + ")";
-					}
-					if(evt.RegisterId >= 0) {
-						registerText += $" ({evt.GetRegisterName()} - ${evt.RegisterId:X2})";
-					}
+			if(evt.Flags.HasFlag(EventFlags.ReadWriteOp)) {
+				bool isWrite = evt.Operation.Type == MemoryOperationType.Write || evt.Operation.Type == MemoryOperationType.DmaWrite;
+				bool isDma = evt.Operation.Type == MemoryOperationType.DmaWrite || evt.Operation.Type == MemoryOperationType.DmaRead;
 
-					entries.AddEntry("Register", registerText + (isWrite ? " (Write)" : " (Read)") + (isDma ? " (DMA)" : ""));
-					entries.AddEntry("Value", "$" + evt.Operation.Value.ToString("X2"));
-					break;
+				CodeLabel? label = LabelManager.GetLabel(new AddressInfo() { Address = (int)evt.Operation.Address, Type = _model.CpuType.ToMemoryType() });
+				string registerText = "$" + evt.Operation.Address.ToString("X4");
+				if(label != null) {
+					registerText = label.Label + " (" + registerText + ")";
+				}
+				if(evt.RegisterId >= 0) {
+					registerText += $" ({evt.GetRegisterName()} - ${evt.RegisterId:X2})";
+				}
+
+				entries.AddEntry(evt.Type == DebugEventType.Register ? "Register" : "Address", registerText + (isWrite ? " (Write)" : " (Read)") + (isDma ? " (DMA)" : ""));
+				entries.AddEntry("Value", "$" + evt.Operation.Value.ToString("X2"));
 			}
 
-			string details = EventViewerViewModel.GetEventDetails(evt, false);
+			string details = EventViewerViewModel.GetEventDetails(_model.CpuType, evt, false);
 			if(details.Length > 0) {
+				entries.AddSeparator("DetailsSeparator");
 				entries.AddEntry("Details", details);
 			}
+
+			entries.EndUpdate();
 
 			return entries;
 		}
@@ -182,6 +188,10 @@ namespace Mesen.Debugger.Windows
 					if(_model.CpuType == cpuType && _model.Config.AutoRefresh && !ToolRefreshHelper.LimitFps(this, 80)) {
 						_model.RefreshData(true);
 					}
+					break;
+
+				case ConsoleNotificationType.StateLoaded:
+					_model.RefreshData();
 					break;
 
 				case ConsoleNotificationType.CodeBreak:

@@ -13,12 +13,12 @@ namespace ScsiSignal
 	enum ScsiSignal
 	{
 		Ack,
-		Atn,
-		Bsy,
-		Cd,
-		Io,
-		Msg,
-		Req,
+		Atn, //Unused
+		Bsy, //Set when an operation is in progress
+		Cd, //Set when the current transfer contains commands/messages/status (cleared when actual data)
+		Io, //Set when drive is sending data to the software (cleared when receiving)
+		Msg, //Set when a message is being sent/received
+		Req, //Set when drive is waiting for the software to reply
 		Rst,
 		Sel,
 	};
@@ -41,6 +41,16 @@ enum class ScsiCommand
 	ReadToc = 0xDE
 };
 
+enum class ScsiUpdateType
+{
+	SetCmdPhase,
+	SetReqSignal,
+	ClearReqSignal,
+	SetDataInPhase,
+	SetTransferDoneIrq,
+	SetGoodStatus
+};
+
 class PceScsiBus : public ISerializable
 {
 private:
@@ -56,6 +66,8 @@ private:
 	
 	int64_t _readSectorCounter = 0;
 	int32_t _ackClearCounter = 0;
+	int32_t _updateCounter = 0;
+	ScsiUpdateType _updateType = {};
 	bool _needExec = true;
 
 	vector<uint8_t> _cmdBuffer;
@@ -82,10 +94,9 @@ private:
 
 	void Reset();
 
-	void SetStatusMessage(ScsiStatus status, uint8_t data);
-
 	void ProcessStatusPhase();
 	void ProcessMessageInPhase();
+	void QueueDriveUpdate(ScsiUpdateType action, uint32_t delay);
 	void ProcessDataInPhase();
 
 	uint8_t GetCommandSize(ScsiCommand cmd);
@@ -94,6 +105,7 @@ private:
 	void ProcessCommandPhase();
 	
 	int64_t GetSeekTime(uint32_t startLba, uint32_t targetLba);
+	uint64_t GetSectorLoadTime();
 	void CmdRead();
 	
 	uint32_t GetAudioLbaPos();
@@ -109,10 +121,12 @@ private:
 public:
 	PceScsiBus(Emulator* emu, PceConsole* console, PceCdRom* cdRom, DiscInfo& disc);
 
+	void SetStatusMessage(ScsiStatus status, uint8_t data, uint32_t length = 1);
+
 	PceScsiBusState& GetState() { return _state; }
 
 	uint8_t GetStatus();
-	bool IsDataTransferInProgress() { return _readSectorCounter > 0 || _state.DataTransferDone; }
+	bool IsDataBlockReady() { return _dataBuffer.size() > 0; }
 	
 	void SetDataPort(uint8_t data);
 	uint8_t GetDataPort();

@@ -4,9 +4,11 @@
 #include "Shared/EmuSettings.h"
 #include "Shared/Emulator.h"
 #include "Utilities/Serializer.h"
+#include "Shared/MessageManager.h"
 
 PceArcadeCard::PceArcadeCard(PceConsole* console, Emulator* emu)
 {
+	_emu = emu;
 	_ram = new uint8_t[PceArcadeCard::ArcadeRamMemSize];
 	_isRamUsed = false;
 	console->InitializeRam(_ram, PceArcadeCard::ArcadeRamMemSize);
@@ -61,7 +63,9 @@ uint8_t PceArcadeCard::ReadPortValue(uint8_t portNumber)
 	PceArcadeCardPortConfig& port = _state.Port[portNumber];
 	uint32_t addr = GetAddress(port);
 	ProcessAutoInc(port);
-	return _ram[addr];
+	uint8_t value = _ram[addr];
+	_emu->ProcessMemoryAccess<CpuType::Pce, MemoryType::PceArcadeCardRam, MemoryOperationType::Read>(addr, value);
+	return value;
 }
 
 void PceArcadeCard::WritePortValue(uint8_t portNumber, uint8_t value)
@@ -70,12 +74,16 @@ void PceArcadeCard::WritePortValue(uint8_t portNumber, uint8_t value)
 	uint32_t addr = GetAddress(port);
 	ProcessAutoInc(port);
 	_isRamUsed = true;
+	_emu->ProcessMemoryAccess<CpuType::Pce, MemoryType::PceArcadeCardRam, MemoryOperationType::Write>(addr, value);
 	_ram[addr] = value;
 }
 
 uint8_t PceArcadeCard::ReadPortRegister(uint8_t portNumber, uint8_t reg)
 {
 	PceArcadeCardPortConfig& port = _state.Port[portNumber];
+
+	//LogDebug("[Arcade Card] Port register read: Port = " + std::to_string(portNumber) + "  Reg = $" + HexUtilities::ToHex(reg));
+
 	switch(reg) {
 		case 0x00:
 		case 0x01:
@@ -90,13 +98,18 @@ uint8_t PceArcadeCard::ReadPortRegister(uint8_t portNumber, uint8_t reg)
 		case 0x08: return (port.IncValue >> 8) & 0xFF;
 		case 0x09: return port.Control;
 		case 0x0A: return 0;
-		default: return 0xFF;
+		default:
+			LogDebug("[Arcade Card] Unknown port register read: Port = " + std::to_string(portNumber) + "  Reg = $" + HexUtilities::ToHex(reg));
+			return 0xFF;
 	}
 }
 
 void PceArcadeCard::WritePortRegister(uint8_t portNumber, uint8_t reg, uint8_t value)
 {
 	PceArcadeCardPortConfig& port = _state.Port[portNumber];
+
+	//LogDebug("[Arcade Card] Port register write: Port = " + std::to_string(portNumber) + "  Reg = $" + HexUtilities::ToHex(reg) + " = $" + HexUtilities::ToHex(value));
+
 	switch(reg) {
 		case 0x00:
 		case 0x01:
@@ -139,6 +152,11 @@ void PceArcadeCard::WritePortRegister(uint8_t portNumber, uint8_t reg, uint8_t v
 				AddOffsetToBase(port);
 			}
 			break;
+
+		default:
+			LogDebug("[Arcade Card] Unknown port register write: Port = " + std::to_string(portNumber) + "  Reg = $" + HexUtilities::ToHex(reg) + " = $" + HexUtilities::ToHex(value));
+			break;
+
 	}
 }
 
@@ -147,21 +165,29 @@ uint8_t PceArcadeCard::Read(uint8_t bank, uint16_t addr, uint8_t value)
 	if(bank == 0xFF) {
 		addr &= 0x1FFF;
 
-		if(addr >= 0x1A00 && addr <= 0x1A3F) {
-			return ReadPortRegister((addr & 0x30) >> 4, addr & 0x0F);
-		} else {
-			switch(addr) {
-				case 0x1AE0: return _state.ValueReg & 0xFF;
-				case 0x1AE1: return (_state.ValueReg >> 8) & 0xFF;
-				case 0x1AE2: return (_state.ValueReg >> 16) & 0xFF;
-				case 0x1AE3: return (_state.ValueReg >> 24) & 0xFF;
+		if(addr >= 0x1A00 && addr <= 0x1BFF) {
+			if(addr <= 0x1A7F) {
+				return ReadPortRegister((addr & 0x30) >> 4, addr & 0x0F);
+			} else {
+				//LogDebug("[Arcade Card] Register read: $" + HexUtilities::ToHex(addr));
 
-				case 0x1AE4: return _state.ShiftReg;
-				case 0x1AE5: return _state.RotateReg;
+				switch(addr) {
+					case 0x1AE0: return _state.ValueReg & 0xFF;
+					case 0x1AE1: return (_state.ValueReg >> 8) & 0xFF;
+					case 0x1AE2: return (_state.ValueReg >> 16) & 0xFF;
+					case 0x1AE3: return (_state.ValueReg >> 24) & 0xFF;
 
-				//Arcade card version+signature
-				case 0x1AFE: return 0x10;
-				case 0x1AFF: return 0x51;
+					case 0x1AE4: return _state.ShiftReg;
+					case 0x1AE5: return _state.RotateReg;
+
+					//Arcade card version+signature
+					case 0x1AFE: return 0x10;
+					case 0x1AFF: return 0x51;
+
+					default:
+						LogDebug("[Arcade Card] Unknown register read: $" + HexUtilities::ToHex(addr));
+						break;
+				}
 			}
 		}
 	} else if(bank >= 0x40 && bank <= 0x43) {
@@ -176,39 +202,47 @@ void PceArcadeCard::Write(uint8_t bank, uint16_t addr, uint8_t value)
 	if(bank == 0xFF) {
 		addr &= 0x1FFF;
 
-		if(addr >= 0x1A00 && addr <= 0x1A3F) {
-			WritePortRegister((addr & 0x30) >> 4, addr & 0x0F, value);
-		} else {
-			switch(addr) {
-				case 0x1AE0: _state.ValueReg = (_state.ValueReg & 0xFFFFFF00) | value; break;
-				case 0x1AE1: _state.ValueReg = (_state.ValueReg & 0xFFFF00FF) | (value << 8); break;
-				case 0x1AE2: _state.ValueReg = (_state.ValueReg & 0xFF00FFFF) | (value << 16); break;
-				case 0x1AE3: _state.ValueReg = (_state.ValueReg & 0x00FFFFFF) | (value << 24); break;
+		if(addr >= 0x1A00 && addr <= 0x1BFF) {
+			if(addr <= 0x1A7F) {
+				WritePortRegister((addr & 0x30) >> 4, addr & 0x0F, value);
+			} else {
+				//LogDebug("[Arcade Card] Register write: $" + HexUtilities::ToHex(addr) + " = $" + HexUtilities::ToHex(value));
 
-				case 0x1AE4:
-					_state.ShiftReg = value;
-					if(value) {
-						if(value & 0x08) {
-							_state.ValueReg >>= ~(value & 0x07) + 1;
-						} else {
-							_state.ValueReg <<= (value & 0x07);
-						}
-					}
-					break;
+				switch(addr) {
+					case 0x1AE0: _state.ValueReg = (_state.ValueReg & 0xFFFFFF00) | value; break;
+					case 0x1AE1: _state.ValueReg = (_state.ValueReg & 0xFFFF00FF) | (value << 8); break;
+					case 0x1AE2: _state.ValueReg = (_state.ValueReg & 0xFF00FFFF) | (value << 16); break;
+					case 0x1AE3: _state.ValueReg = (_state.ValueReg & 0x00FFFFFF) | (value << 24); break;
 
-				case 0x1AE5:
-					//untested
-					_state.RotateReg = value;
-					if(value) {
-						if(value & 0x08) {
-							uint8_t rotateRight = ~(value & 0x07) + 1;
-							_state.ValueReg = (_state.ValueReg >> rotateRight) | (_state.ValueReg << (32 - rotateRight));
-						} else {
-							uint8_t rotateLeft = (value & 0x07);
-							_state.ValueReg = (_state.ValueReg << rotateLeft) | (_state.ValueReg >> (32 - rotateLeft));
+					case 0x1AE4:
+						_state.ShiftReg = value;
+						if(value) {
+							if(value & 0x08) {
+								_state.ValueReg >>= (~value & 0x07) + 1;
+							} else {
+								_state.ValueReg <<= (value & 0x07);
+							}
 						}
-					}
-					break;
+						break;
+
+					case 0x1AE5:
+						//untested
+						_state.RotateReg = value;
+						if(value) {
+							if(value & 0x08) {
+								uint8_t rotateRight = (~value & 0x07) + 1;
+								_state.ValueReg = (_state.ValueReg >> rotateRight) | (_state.ValueReg << (32 - rotateRight));
+							} else {
+								uint8_t rotateLeft = (value & 0x07);
+								_state.ValueReg = (_state.ValueReg << rotateLeft) | (_state.ValueReg >> (32 - rotateLeft));
+							}
+						}
+						break;
+
+					default:
+						LogDebug("[Arcade Card] Unknown register write: $" + HexUtilities::ToHex(addr) + " = $" + HexUtilities::ToHex(value));
+						break;
+				}
 			}
 		}
 	} else if(bank >= 0x40 && bank <= 0x43) {

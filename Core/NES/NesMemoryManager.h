@@ -45,6 +45,7 @@ public:
 	void Reset(bool softReset);
 	void RegisterIODevice(INesMemoryHandler* handler);
 	void RegisterWriteHandler(INesMemoryHandler* handler, uint32_t start, uint32_t end);
+	void RegisterReadHandler(INesMemoryHandler* handler, uint32_t start, uint32_t end);
 	void UnregisterIODevice(INesMemoryHandler* handler);
 
 	uint8_t DebugRead(uint16_t addr);
@@ -57,4 +58,5 @@ public:
 	void Write(uint16_t addr, uint8_t value, MemoryOperationType operationType);
 
 	uint8_t GetOpenBus(uint8_t mask = 0xFF);
+	uint8_t GetInternalOpenBus(uint8_t mask = 0xFF);
 };

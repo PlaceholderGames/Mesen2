@@ -70,6 +70,7 @@ namespace Mesen.Config
 
 			CreateMimeType("x-mesen-nes", "nes", "NES ROM", mimeTypes, cfg.AssociateNesRomFiles);
 			CreateMimeType("x-mesen-fds", "fds", "FDS ROM", mimeTypes, cfg.AssociateNesRomFiles);
+			CreateMimeType("x-mesen-qd", "qd", "FDS ROM (QD format)", mimeTypes, cfg.AssociateNesRomFiles);
 			CreateMimeType("x-mesen-studybox", "studybox", "Studybox ROM (Famicom)", mimeTypes, cfg.AssociateNesRomFiles);
 			CreateMimeType("x-mesen-unif", "unf", "NES ROM", mimeTypes, cfg.AssociateNesRomFiles);
 
@@ -77,8 +78,10 @@ namespace Mesen.Config
 			CreateMimeType("x-mesen-nsfe", "nsfe", "Nintendo Sound File (extended)", mimeTypes, cfg.AssociateNesMusicFiles);
 
 			CreateMimeType("x-mesen-gb", "gb", "Game Boy ROM", mimeTypes, cfg.AssociateGbRomFiles);
+			CreateMimeType("x-mesen-gbx", "gbx", "Game Boy ROM", mimeTypes, cfg.AssociateGbRomFiles);
 			CreateMimeType("x-mesen-gbc", "gbc", "Game Boy Color ROM", mimeTypes, cfg.AssociateGbRomFiles);
 			CreateMimeType("x-mesen-gbs", "gbs", "Game Boy Sound File", mimeTypes, cfg.AssociateGbMusicFiles);
+			CreateMimeType("x-mesen-gba", "gba", "Game Boy Advance ROM", mimeTypes, cfg.AssociateGbaRomFiles);
 
 			CreateMimeType("x-mesen-pce", "pce", "PC Engine ROM", mimeTypes, cfg.AssociatePceRomFiles);
 			CreateMimeType("x-mesen-sgx", "sgx", "PC Engine SuperGrafx ROM", mimeTypes, cfg.AssociatePceRomFiles);
@@ -87,6 +90,10 @@ namespace Mesen.Config
 			CreateMimeType("x-mesen-sms", "sms", "Master System ROM", mimeTypes, cfg.AssociateSmsRomFiles);
 			CreateMimeType("x-mesen-gg", "gg", "Game Gear ROM", mimeTypes, cfg.AssociateGameGearRomFiles);
 			CreateMimeType("x-mesen-sg", "sg", "SG-1000 ROM", mimeTypes, cfg.AssociateSgRomFiles);
+			CreateMimeType("x-mesen-col", "col", "ColecoVision ROM", mimeTypes, cfg.AssociateCvRomFiles);
+			
+			CreateMimeType("x-mesen-ws", "ws", "WonderSwan ROM", mimeTypes, cfg.AssociateWsRomFiles);
+			CreateMimeType("x-mesen-wsc", "wsc", "WonderSwan Color ROM", mimeTypes, cfg.AssociateWsRomFiles);
 
 			//Icon used for shortcuts
 			ImageUtilities.BitmapFromAsset("Assets/MesenIcon.png").Save(Path.Combine(iconFolder, "MesenIcon.png"));
@@ -185,6 +192,7 @@ namespace Mesen.Config
 
 			FileAssociationHelper.UpdateFileAssociation("nes", cfg.AssociateNesRomFiles);
 			FileAssociationHelper.UpdateFileAssociation("fds", cfg.AssociateNesRomFiles);
+			FileAssociationHelper.UpdateFileAssociation("qd", cfg.AssociateNesRomFiles);
 			FileAssociationHelper.UpdateFileAssociation("unf", cfg.AssociateNesRomFiles);
 			FileAssociationHelper.UpdateFileAssociation("studybox", cfg.AssociateNesRomFiles);
 
@@ -192,8 +200,11 @@ namespace Mesen.Config
 			FileAssociationHelper.UpdateFileAssociation("nsfe", cfg.AssociateNesMusicFiles);
 
 			FileAssociationHelper.UpdateFileAssociation("gb", cfg.AssociateGbRomFiles);
+			FileAssociationHelper.UpdateFileAssociation("gbx", cfg.AssociateGbRomFiles);
 			FileAssociationHelper.UpdateFileAssociation("gbc", cfg.AssociateGbRomFiles);
 			FileAssociationHelper.UpdateFileAssociation("gbs", cfg.AssociateGbMusicFiles);
+			
+			FileAssociationHelper.UpdateFileAssociation("gba", cfg.AssociateGbaRomFiles);
 
 			FileAssociationHelper.UpdateFileAssociation("pce", cfg.AssociatePceRomFiles);
 			FileAssociationHelper.UpdateFileAssociation("sgx", cfg.AssociatePceRomFiles);
@@ -202,6 +213,10 @@ namespace Mesen.Config
 			FileAssociationHelper.UpdateFileAssociation("sms", cfg.AssociateSmsRomFiles);
 			FileAssociationHelper.UpdateFileAssociation("gg", cfg.AssociateGameGearRomFiles);
 			FileAssociationHelper.UpdateFileAssociation("sg", cfg.AssociateSgRomFiles);
+			FileAssociationHelper.UpdateFileAssociation("col", cfg.AssociateCvRomFiles);
+		
+			FileAssociationHelper.UpdateFileAssociation("ws", cfg.AssociateWsRomFiles);
+			FileAssociationHelper.UpdateFileAssociation("wsc", cfg.AssociateWsRomFiles);
 		}
 
 		static private void UpdateFileAssociation(string extension, bool associate)

@@ -14,9 +14,9 @@
 
 const vector<string> ExpressionEvaluator::_binaryOperators = { { "*", "/", "%", "+", "-", "<<", ">>", "<", "<=", ">", ">=", "==", "!=", "&", "^", "|", "&&", "||" } };
 const vector<int> ExpressionEvaluator::_binaryPrecedence = { { 10,  10,  10,   9,   9,    8,    8,   7,   7,    7,    7,    6,    6,   5,   4,   3,    2,    1 } };
-const vector<string> ExpressionEvaluator::_unaryOperators = { { "+", "-", "~", "!", ":" } };
-const vector<int> ExpressionEvaluator::_unaryPrecedence = { { 11,  11,  11,  11, 11 } };
-const std::unordered_set<string> ExpressionEvaluator::_operators = { { "*", "/", "%", "+", "-", "<<", ">>", "<", "<=", ">", ">=", "==", "!=", "&", "^", "|", "&&", "||", "~", "!", "(", ")", "{", "}", "[", "]", ":" } };
+const vector<string> ExpressionEvaluator::_unaryOperators = { { "+", "-", "~", "!", ":", "#" } };
+const vector<int> ExpressionEvaluator::_unaryPrecedence = { { 11,  11,  11,  11, 11, 11 } };
+const std::unordered_set<string> ExpressionEvaluator::_operators = { { "*", "/", "%", "+", "-", "<<", ">>", "<", "<=", ">", ">=", "==", "!=", "&", "^", "|", "&&", "||", "~", "!", "(", ")", "{", "}", "[", "]", ":", "#" } };
 
 bool ExpressionEvaluator::IsOperator(string token, int &precedence, bool unaryOperator)
 {
@@ -65,10 +65,13 @@ unordered_map<string, int64_t>* ExpressionEvaluator::GetAvailableTokens()
 		case CpuType::Sa1: return &GetSnesTokens();
 		case CpuType::Gsu: return &GetGsuTokens();
 		case CpuType::Cx4: return &GetCx4Tokens();
+		case CpuType::St018: return &GetSt018Tokens();
 		case CpuType::Gameboy: return &GetGameboyTokens();
 		case CpuType::Nes: return &GetNesTokens();
 		case CpuType::Pce: return &GetPceTokens();
 		case CpuType::Sms: return &GetSmsTokens();
+		case CpuType::Gba: return &GetGbaTokens();
+		case CpuType::Ws: return &GetWsTokens();
 	}
 
 	return nullptr;
@@ -155,10 +158,21 @@ string ExpressionEvaluator::GetNextToken(string expression, size_t &pos, Express
 	string output;
 	success = true;
 
+	if(expression.empty()) {
+		success = false;
+		return "";
+	}
+
 	char c = std::tolower(expression[pos]);
-	if(c == '$') {
+	char nextChar = (pos + 1 < expression.size()) ? std::tolower(expression[pos + 1]) : '\0';
+	if(c == '$' || (c == '0' && nextChar == 'x')) {
 		//Hex numbers
 		pos++;
+		if(c == '0') {
+			//Skip over 'x' in '0x' prefix
+			pos++;
+		}
+
 		for(size_t len = expression.size(); pos < len; pos++) {
 			c = std::tolower(expression[pos]);
 			if((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
@@ -355,7 +369,7 @@ bool ExpressionEvaluator::ToRpn(string expression, ExpressionData &data)
 	return true;
 }
 
-int32_t ExpressionEvaluator::Evaluate(ExpressionData &data, EvalResultType &resultType, MemoryOperationInfo &operationInfo, AddressInfo& addressInfo)
+int64_t ExpressionEvaluator::Evaluate(ExpressionData &data, EvalResultType &resultType, MemoryOperationInfo &operationInfo, AddressInfo& addressInfo)
 {
 	if(data.RpnQueue.empty()) {
 		resultType = EvalResultType::Invalid;
@@ -377,11 +391,6 @@ int32_t ExpressionEvaluator::Evaluate(ExpressionData &data, EvalResultType &resu
 				int64_t labelIndex = token - EvalValues::FirstLabelIndex;
 				if((size_t)labelIndex < data.Labels.size()) {
 					token = _labelManager->GetLabelRelativeAddress(data.Labels[(uint32_t)labelIndex], _cpuType);
-					if(token < -1) {
-						//Label doesn't exist, try to find a matching multi-byte label
-						string label = data.Labels[(uint32_t)labelIndex] + "+0";
-						token = _labelManager->GetLabelRelativeAddress(label, _cpuType);
-					}
 				} else {
 					token = -2;
 				}
@@ -412,10 +421,13 @@ int32_t ExpressionEvaluator::Evaluate(ExpressionData &data, EvalResultType &resu
 								case CpuType::Sa1: token = GetSnesTokenValue(token, resultType); break;
 								case CpuType::Gsu: token = GetGsuTokenValue(token, resultType); break;
 								case CpuType::Cx4: token = GetCx4TokenValue(token, resultType); break;
+								case CpuType::St018: token = GetSt018TokenValue(token, resultType); break;
 								case CpuType::Gameboy: token = GetGameboyTokenValue(token, resultType); break;
 								case CpuType::Nes: token = GetNesTokenValue(token, resultType); break;
 								case CpuType::Pce: token = GetPceTokenValue(token, resultType); break;
 								case CpuType::Sms: token = GetSmsTokenValue(token, resultType); break;
+								case CpuType::Gba: token = GetGbaTokenValue(token, resultType); break;
+								case CpuType::Ws: token = GetWsTokenValue(token, resultType); break;
 							}
 						}
 						break;
@@ -471,9 +483,10 @@ int32_t ExpressionEvaluator::Evaluate(ExpressionData &data, EvalResultType &resu
 				case EvalOperators::BinaryNot: token = ~right; break;
 				case EvalOperators::LogicalNot: token = (bool)!right; break;
 				case EvalOperators::AbsoluteAddress: token = right >= 0 ? _debugger->GetAbsoluteAddress({ (int32_t)right, _cpuMemory }).Address : -1; break;
+				case EvalOperators::ReadDword: token = _debugger->GetMemoryDumper()->GetMemoryValue32(_cpuMemory, (uint32_t)right); break;
 
 				case EvalOperators::Bracket: token = _debugger->GetMemoryDumper()->GetMemoryValue(_cpuMemory, (uint32_t)right); break;
-				case EvalOperators::Braces: token = _debugger->GetMemoryDumper()->GetMemoryValueWord(_cpuMemory, (uint32_t)right); break;
+				case EvalOperators::Braces: token = _debugger->GetMemoryDumper()->GetMemoryValue16(_cpuMemory, (uint32_t)right); break;
 				default: throw std::runtime_error("Invalid operator");
 			}
 		}
@@ -483,7 +496,7 @@ int32_t ExpressionEvaluator::Evaluate(ExpressionData &data, EvalResultType &resu
 			return 0;
 		}
 	}
-	return (int32_t)operandStack[0];
+	return std::clamp<int64_t>(operandStack[0], INT32_MIN, UINT32_MAX);
 }
 
 ExpressionEvaluator::ExpressionEvaluator(Debugger* debugger, IDebugger* cpuDebugger, CpuType cpuType)
@@ -570,7 +583,7 @@ ExpressionData* ExpressionEvaluator::PrivateGetRpnList(string expression, bool& 
 	return cachedData;
 }
 
-int32_t ExpressionEvaluator::PrivateEvaluate(string expression, EvalResultType &resultType, MemoryOperationInfo &operationInfo, AddressInfo& addressInfo, bool& success)
+int64_t ExpressionEvaluator::PrivateEvaluate(string expression, EvalResultType &resultType, MemoryOperationInfo &operationInfo, AddressInfo& addressInfo, bool& success)
 {
 	success = true;
 	ExpressionData *cachedData = PrivateGetRpnList(expression, success);
@@ -583,11 +596,11 @@ int32_t ExpressionEvaluator::PrivateEvaluate(string expression, EvalResultType &
 	return Evaluate(*cachedData, resultType, operationInfo, addressInfo);	
 }
 
-int32_t ExpressionEvaluator::Evaluate(string expression, EvalResultType &resultType, MemoryOperationInfo &operationInfo, AddressInfo& addressInfo)
+int64_t ExpressionEvaluator::Evaluate(string expression, EvalResultType &resultType, MemoryOperationInfo &operationInfo, AddressInfo& addressInfo)
 {
 	try {
 		bool success;
-		int32_t result = PrivateEvaluate(expression, resultType, operationInfo, addressInfo, success);
+		int64_t result = PrivateEvaluate(expression, resultType, operationInfo, addressInfo, success);
 		if(success) {
 			return result;
 		}
@@ -618,11 +631,11 @@ bool ExpressionEvaluator::Validate(string expression)
 void ExpressionEvaluator::RunTests()
 {
 	//Some basic unit tests to run in debug mode
-	auto test = [=](string expr, EvalResultType expectedType, int expectedResult) {
+	auto test = [=](string expr, EvalResultType expectedType, int64_t expectedResult) {
 		MemoryOperationInfo opInfo = {};
 		AddressInfo addrInfo = {};
 		EvalResultType type;
-		int32_t result = Evaluate(expr, type, opInfo, addrInfo);
+		int64_t result = Evaluate(expr, type, opInfo, addrInfo);
 
 		assert(type == expectedType);
 		assert(result == expectedResult);
@@ -644,7 +657,9 @@ void ExpressionEvaluator::RunTests()
 	test("10 / 0", EvalResultType::DivideBy0, 0);
 
 	uint8_t byte4500 = _debugger->GetMemoryDumper()->GetMemoryValue(_cpuMemory, 0x4500);
-	uint16_t word4500 = _debugger->GetMemoryDumper()->GetMemoryValueWord(_cpuMemory, 0x4500);
+	uint16_t word4500 = _debugger->GetMemoryDumper()->GetMemoryValue16(_cpuMemory, 0x4500);
+	uint32_t dword4500 = _debugger->GetMemoryDumper()->GetMemoryValue32(_cpuMemory, 0x4500);
+	uint32_t dword4501 = _debugger->GetMemoryDumper()->GetMemoryValue32(_cpuMemory, 0x4501);
 	uint8_t indirectByte = _debugger->GetMemoryDumper()->GetMemoryValue(_cpuMemory, 0x4500 + byte4500);
 
 	SnesCpuState& state = (SnesCpuState&)_cpuDebugger->GetState();
@@ -686,5 +701,9 @@ void ExpressionEvaluator::RunTests()
 
 	test("[$4500+[$4500]]", EvalResultType::Numeric, indirectByte);
 	test("-($10+[$4500])", EvalResultType::Numeric, -(0x10 + byte4500));
+
+	test("#$4500", EvalResultType::Numeric, dword4500);
+	test("#$4500+1", EvalResultType::Numeric, dword4500 + 1);
+	test("#($4500+1)", EvalResultType::Numeric, dword4501);
 }
 #endif

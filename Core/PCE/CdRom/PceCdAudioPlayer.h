@@ -19,10 +19,12 @@ class PceCdAudioPlayer final : public IAudioProvider, public ISerializable
 
 	vector<int16_t> _samplesToPlay;
 	uint32_t _clockCounter = 0;
+	uint32_t _seekDelay = 0;
 	
 	HermiteResampler _resampler;
 	
 	void PlaySample();
+	void ProcessAudioPlaybackStart();
 
 public:
 	PceCdAudioPlayer(Emulator* emu, PceCdRom* cdrom, DiscInfo& disc);
@@ -42,9 +44,18 @@ public:
 	{
 		_clockCounter += 3;
 		if(_clockCounter > 487) {
-			//Output one sample every 487 master clocks (~44101.1hz)
-			PlaySample();
 			_clockCounter -= 487;
+			if(_seekDelay == 0) {
+				//Output one sample every 487 master clocks (~44101.1hz)
+				PlaySample();
+			} else {
+				if(_seekDelay <= 487) {
+					_seekDelay = 0;
+					ProcessAudioPlaybackStart();
+				} else {
+					_seekDelay -= 487;
+				}
+			}
 		}
 	}
 

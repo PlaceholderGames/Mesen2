@@ -152,7 +152,7 @@ uint32_t GsuDebugger::GetProgramCounter(bool getInstPc)
 	return getInstPc ? _prevProgramCounter : ((state.ProgramBank << 16) | state.R[15]);
 }
 
-uint64_t GsuDebugger::GetCpuCycleCount()
+uint64_t GsuDebugger::GetCpuCycleCount(bool forProfiler)
 {
 	return _gsu->GetState().CycleCount;
 }
@@ -160,7 +160,7 @@ uint64_t GsuDebugger::GetCpuCycleCount()
 DebuggerFeatures GsuDebugger::GetSupportedFeatures()
 {
 	DebuggerFeatures features = {};
-	features.ChangeProgramCounter = true;
+	features.ChangeProgramCounter = AllowChangeProgramCounter;
 	return features;
 }
 
@@ -181,7 +181,7 @@ IAssembler* GsuDebugger::GetAssembler()
 
 BaseEventManager* GsuDebugger::GetEventManager()
 {
-	throw std::runtime_error("Event manager not supported for GSU");
+	return nullptr;
 }
 
 BaseState& GsuDebugger::GetState()
